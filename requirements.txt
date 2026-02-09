@@ -5,3 +5,5 @@ pydantic-settings
 firecrawl-py
 tenacity
 python-dotenv
+requests
+beautifulsoup4

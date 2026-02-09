@@ -181,3 +181,5 @@ csv_reports/*.csv
 csv_analysis_results/*.txt
 !csv_analysis_results/README.md
 temp_csv/
+
+*.pdf
