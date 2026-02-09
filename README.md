@@ -307,24 +307,17 @@ $ python scripts/bigquery_teste.py
 
 ## 📜 Changelog
 
-### v0.3.0 - Coleta Multi-Fonte com Paginação
-- Implementado `fetch_from_sources()` para coleta de múltiplas queries
-- Implementado `fetch_products_paginated()` com paginação dinâmica
-- Suporte a 3 fontes simultâneas: monitor gamer, iphone, ps5
-- Estatísticas de coleta por fonte
+### v1.0.0 - Primeira Release (2026-02-09) 🎉
 
-### v0.2.0 - Integração BigQuery
-- Criado serviço `BigQueryService` para persistência
-- Schema da tabela `promotions` com todos os campos do desafio
-- **Deduplicação** via verificação pré-inserção com `dedupe_key`
-- Inserção via LOAD JOB (compatível com free tier GCP)
-- Métodos de estatísticas e busca de produtos recentes
+MVP completo do coletor de promoções com todas as funcionalidades core:
 
-### v0.1.0 - MVP Coleta
-- Serviço de web scraping com BeautifulSoup
-- Normalização de dados com Pydantic
-- Retry com backoff exponencial (tenacity)
-- Extração de preço, desconto, vendedor, imagem
+- **Coleta Multi-Fonte**: suporte a múltiplas queries simultâneas com paginação dinâmica
+- **Persistência BigQuery**: integração completa com Google BigQuery via LOAD JOB
+- **Deduplicação**: verificação pré-inserção com `dedupe_key` (marketplace + item_id + price)
+- **Normalização**: schema Pydantic com todos os campos do desafio
+- **CI/CD**: GitHub Actions para lint, validação e releases automáticas
+
+📊 **Métricas de teste**: 300 produtos coletados, 292 inseridos, 8 duplicatas ignoradas
 
 ---
 
@@ -341,8 +334,8 @@ git add .
 git commit -m "feat: nova funcionalidade"
 
 # Crie e push a tag
-git tag -a v0.3.0 -m "Release v0.3.0 - Coleta Multi-Fonte"
-git push origin v0.3.0
+git tag -a v1.1.0 -m "Release v1.1.0 - Nova Feature"
+git push origin v1.1.0
 ```
 
 O GitHub Actions criará automaticamente a release com os artefatos.
