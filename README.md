@@ -1,5 +1,10 @@
 # Desafio Técnico: Coletor de promoções do Mercado Livre
 
+[![CI](https://github.com/phaelzin/prototipo-coletor-promo/actions/workflows/ci.yml/badge.svg)](https://github.com/phaelzin/prototipo-coletor-promo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/phaelzin/prototipo-coletor-promo?include_prereleases)](https://github.com/phaelzin/prototipo-coletor-promo/releases)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 ## 📋 Visão Geral
 
 Protótipo de um coletor de promoções do Mercado Livre que realiza:
@@ -320,6 +325,27 @@ $ python scripts/bigquery_teste.py
 - Normalização de dados com Pydantic
 - Retry com backoff exponencial (tenacity)
 - Extração de preço, desconto, vendedor, imagem
+
+---
+
+## 📜 Versionamento
+
+Este projeto usa [Semantic Versioning](https://semver.org/). 
+Veja o [CHANGELOG.md](CHANGELOG.md) para histórico completo de mudanças.
+
+### Como criar uma release
+
+```bash
+# Commit suas mudanças
+git add .
+git commit -m "feat: nova funcionalidade"
+
+# Crie e push a tag
+git tag -a v0.3.0 -m "Release v0.3.0 - Coleta Multi-Fonte"
+git push origin v0.3.0
+```
+
+O GitHub Actions criará automaticamente a release com os artefatos.
 
 ---
 

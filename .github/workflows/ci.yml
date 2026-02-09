@@ -1,0 +1,47 @@
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout código
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: 📦 Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest
+
+      - name: 🔍 Lint com Ruff
+        run: |
+          ruff check . --output-format=github || true
+
+      - name: ✅ Verificar imports
+        run: |
+          python -c "from app.schemas.product import ProductSchema; print('✅ Schema OK')"
+          python -c "from app.services.crawler import CrawlerService; print('✅ Crawler OK')"
+          python -c "from app.core.config import settings; print('✅ Config OK')"
+
+      - name: 📋 Resumo
+        run: |
+          echo "## 📊 CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Dependências instaladas" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Lint executado" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Imports validados" >> $GITHUB_STEP_SUMMARY

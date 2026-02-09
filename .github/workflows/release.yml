@@ -1,0 +1,95 @@
+# .github/workflows/release.yml
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Extrair informações da tag
+        id: tag
+        run: |
+          echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: 📝 Extrair changelog da versão
+        id: changelog
+        run: |
+          # Extrai a seção do changelog para esta versão
+          VERSION="${{ steps.tag.outputs.version }}"
+          
+          # Pega o conteúdo entre a versão atual e a próxima
+          CHANGELOG=$(awk "/## \[${VERSION}\]/{flag=1; next} /## \[/{flag=0} flag" CHANGELOG.md)
+          
+          # Se não encontrar, usa mensagem padrão
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release ${{ steps.tag.outputs.tag }}"
+          fi
+          
+          # Salva em arquivo para o release
+          echo "$CHANGELOG" > release_notes.md
+          
+          echo "📋 Release Notes:"
+          cat release_notes.md
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 Criar pacote de distribuição
+        run: |
+          mkdir -p dist
+          
+          # Cria arquivo com informações da versão
+          echo "VERSION=${{ steps.tag.outputs.version }}" > dist/VERSION
+          echo "BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> dist/VERSION
+          echo "COMMIT=${GITHUB_SHA}" >> dist/VERSION
+          
+          # Empacota o código fonte
+          tar -czvf dist/prototipo-coletor-promo-${{ steps.tag.outputs.version }}.tar.gz \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='secrets' \
+            app/ scripts/ requirements.txt README.md CHANGELOG.md
+
+      - name: 🚀 Criar GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "🎉 Release ${{ steps.tag.outputs.tag }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, 'alpha') || contains(steps.tag.outputs.tag, 'beta') || contains(steps.tag.outputs.tag, 'rc') }}
+          files: |
+            dist/prototipo-coletor-promo-${{ steps.tag.outputs.version }}.tar.gz
+            dist/VERSION
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Resumo da Release
+        run: |
+          echo "## 🎉 Release ${{ steps.tag.outputs.tag }} criada!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artefatos" >> $GITHUB_STEP_SUMMARY
+          echo "- \`prototipo-coletor-promo-${{ steps.tag.outputs.version }}.tar.gz\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Changelog" >> $GITHUB_STEP_SUMMARY
+          cat release_notes.md >> $GITHUB_STEP_SUMMARY
