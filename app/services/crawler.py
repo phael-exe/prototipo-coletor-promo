@@ -1,5 +1,6 @@
 import logging
 import re
+import uuid
 from typing import List
 from datetime import datetime, timezone
 import requests
@@ -25,6 +26,9 @@ class CrawlerService:
             "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         }
         self.base_url = "https://lista.mercadolivre.com.br"
+        
+        # Gera um execution_id único por instância do serviço
+        self.execution_id = str(uuid.uuid4())[:8]
 
     @retry(
         stop=stop_after_attempt(settings.MAX_RETRIES),
@@ -42,7 +46,7 @@ class CrawlerService:
         Returns:
             Lista de ProductSchema com os produtos encontrados
         """
-        logger.info(f"[COLETA] Iniciando busca por: '{query}' (limite: {limit})")
+        logger.info(f"[COLETA] Iniciando busca por: '{query}' (limite: {limit}) | execution_id: {self.execution_id}")
         
         # Monta a URL de busca
         search_url = f"{self.base_url}/{query.replace(' ', '-')}"
@@ -71,10 +75,11 @@ class CrawlerService:
             source_query: Query de busca que gerou essa página
             
         Returns:
-            Lista de ProductSchema extraídos
+            Lista de ProductSchema extraídos e normalizados
         """
         products = []
         soup = BeautifulSoup(html_content, 'html.parser')
+        collected_at = datetime.now(timezone.utc)
         
         # Seletores comuns do ML (eles mudam as vezes, por isso mantemos vários padrões)
         items = soup.find_all('li', {'class': 'ui-search-layout__item'})
@@ -110,6 +115,10 @@ class CrawlerService:
                 id_match = re.search(r'MLB-?(\d+)', url)
                 if id_match:
                     item_id = f"MLB{id_match.group(1)}"
+                else:
+                    # Se não encontrou ID, pula o item (obrigatório para dedupe)
+                    logger.debug(f"Item sem ID válido, pulando: {title[:50]}")
+                    continue
 
                 # Preço - busca dentro de poly-price__current
                 price = 0.0
@@ -130,22 +139,36 @@ class CrawlerService:
                     if op_fraction:
                         original_price = float(op_fraction.text.replace('.', '').replace(',', '.'))
 
+                # Calcula percentual de desconto
+                discount_percent = None
+                if original_price and original_price > price:
+                    discount_percent = round(((original_price - price) / original_price) * 100, 2)
+
                 # Imagem - busca img.poly-component__picture
                 img_tag = item.find('img', {'class': 'poly-component__picture'})
                 if not img_tag:
                     img_tag = item.find('img')
                 image_url = img_tag.get('data-src') or img_tag.get('src') if img_tag else None
 
-                # Cria o objeto usando o Schema
+                # Gera dedupe_key: combinação única de marketplace + item_id + price
+                dedupe_key = f"mercado_livre_{item_id}_{price}"
+
+                # Cria o objeto normalizado usando o Schema
                 product = ProductSchema(
+                    marketplace="mercado_livre",
                     item_id=item_id,
+                    url=url,
                     title=title,
                     price=price,
                     original_price=original_price,
-                    url=url,
+                    discount_percent=discount_percent,
+                    seller=None,  # Difícil pegar na listagem sem entrar no item
                     image_url=image_url,
-                    currency="BRL",
-                    seller=None  # Difícil pegar na listagem sem entrar no item
+                    source=source_query,
+                    dedupe_key=dedupe_key,
+                    execution_id=self.execution_id,
+                    collected_at=collected_at,
+                    currency="BRL"
                 )
                 products.append(product)
                 
