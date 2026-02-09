@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     RETRY_MIN_SECONDS: int = 2
     RETRY_MAX_SECONDS: int = 10
+    
+    # Google Cloud Platform
+    GCP_PROJECT_ID: str = "promozone-ml"
+    GCP_DATASET_ID: str = "promocoes_teste"
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None  # Caminho para o JSON da service account
 
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 

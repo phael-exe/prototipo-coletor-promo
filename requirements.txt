@@ -6,4 +6,5 @@ firecrawl-py
 tenacity
 python-dotenv
 requests
-beautifulsoup4
+beautifulsoup4google-cloud-bigquery
+db-dtypes

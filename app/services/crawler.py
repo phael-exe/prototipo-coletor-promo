@@ -1,7 +1,8 @@
 import logging
 import re
 import uuid
-from typing import List
+import time
+from typing import List, Dict
 from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
@@ -12,10 +13,14 @@ from app.schemas.product import ProductSchema
 # Configuração de logs
 logger = logging.getLogger(__name__)
 
+# Constantes
+ITEMS_PER_PAGE = 50  # ML mostra ~50 itens por página com _NoIndex_True
+
 class CrawlerService:
     """
     Serviço de coleta de produtos do Mercado Livre via web scraping.
     Usa requests + BeautifulSoup para extrair dados da página de busca.
+    Suporta paginação dinâmica e múltiplas fontes de busca.
     """
 
     def __init__(self):
@@ -29,15 +34,146 @@ class CrawlerService:
         
         # Gera um execution_id único por instância do serviço
         self.execution_id = str(uuid.uuid4())[:8]
+        
+        # Estatísticas da coleta
+        self.stats = {
+            "total_collected": 0,
+            "pages_fetched": 0,
+            "sources_processed": 0,
+        }
+
+    def fetch_from_sources(
+        self, 
+        sources: List[str], 
+        limit_per_source: int = 100,
+        max_pages_per_source: int = 3,
+        delay_between_requests: float = 1.0
+    ) -> Dict[str, List[ProductSchema]]:
+        """
+        Coleta produtos de múltiplas fontes (queries de busca).
+        
+        Args:
+            sources: Lista de termos de busca (ex: ["monitor gamer 144hz", "iphone 17", "ps5"])
+            limit_per_source: Limite de produtos por fonte
+            max_pages_per_source: Máximo de páginas a coletar por fonte
+            delay_between_requests: Delay entre requisições (rate limit)
+            
+        Returns:
+            Dict com fonte -> lista de produtos
+        """
+        logger.info(f"[COLETA] Iniciando coleta de {len(sources)} fontes | execution_id: {self.execution_id}")
+        
+        results = {}
+        
+        for i, source in enumerate(sources, 1):
+            logger.info(f"[COLETA] Fonte {i}/{len(sources)}: '{source}'")
+            
+            products = self.fetch_products_paginated(
+                query=source,
+                limit=limit_per_source,
+                max_pages=max_pages_per_source,
+                delay_between_pages=delay_between_requests
+            )
+            
+            results[source] = products
+            self.stats["sources_processed"] += 1
+            
+            # Delay entre fontes (exceto na última)
+            if i < len(sources):
+                logger.debug(f"[COLETA] Aguardando {delay_between_requests}s antes da próxima fonte...")
+                time.sleep(delay_between_requests)
+        
+        total = sum(len(p) for p in results.values())
+        logger.info(f"[COLETA] Coleta finalizada: {total} produtos de {len(sources)} fontes")
+        
+        return results
+
+    def fetch_products_paginated(
+        self, 
+        query: str, 
+        limit: int = 100,
+        max_pages: int = 3,
+        delay_between_pages: float = 1.0
+    ) -> List[ProductSchema]:
+        """
+        Coleta produtos com paginação dinâmica.
+        Para automaticamente quando não há mais produtos ou atinge o limite.
+        
+        Args:
+            query: Termo de busca
+            limit: Quantidade máxima de produtos a retornar
+            max_pages: Número máximo de páginas a coletar
+            delay_between_pages: Delay em segundos entre requisições
+            
+        Returns:
+            Lista de ProductSchema com os produtos encontrados
+        """
+        logger.info(f"[COLETA] Busca paginada: '{query}' (limite: {limit}, max_pages: {max_pages})")
+        
+        all_products = []
+        query_slug = query.replace(' ', '-')
+        
+        for page in range(1, max_pages + 1):
+            # Monta URL com paginação
+            # ML usa _Desde_XX onde XX = (page-1) * 50 + 1 para páginas > 1
+            if page == 1:
+                search_url = f"{self.base_url}/{query_slug}_NoIndex_True"
+            else:
+                offset = (page - 1) * ITEMS_PER_PAGE + 1
+                search_url = f"{self.base_url}/{query_slug}_Desde_{offset}_NoIndex_True"
+            
+            try:
+                products = self._fetch_page(search_url, source_query=query)
+                
+                if not products:
+                    logger.info(f"[COLETA] Página {page} sem produtos, encerrando paginação para '{query}'")
+                    break
+                
+                all_products.extend(products)
+                self.stats["pages_fetched"] += 1
+                self.stats["total_collected"] += len(products)
+                
+                logger.info(f"[COLETA] Página {page}: {len(products)} produtos (total acumulado: {len(all_products)})")
+                
+                # Para se atingiu o limite
+                if len(all_products) >= limit:
+                    logger.info(f"[COLETA] Limite atingido ({limit}), parando paginação")
+                    break
+                
+                # Para se a página veio com menos produtos que o esperado (última página)
+                if len(products) < ITEMS_PER_PAGE * 0.5:  # Menos de 50% da capacidade
+                    logger.info(f"[COLETA] Página parcial detectada, provavelmente última página")
+                    break
+                
+                # Rate limit entre páginas
+                if page < max_pages:
+                    time.sleep(delay_between_pages)
+                    
+            except requests.RequestException as e:
+                logger.error(f"[COLETA] Erro na página {page}: {e}")
+                break
+        
+        return all_products[:limit]
 
     @retry(
         stop=stop_after_attempt(settings.MAX_RETRIES),
         wait=wait_exponential(min=settings.RETRY_MIN_SECONDS, max=settings.RETRY_MAX_SECONDS),
         reraise=True
     )
+    def _fetch_page(self, url: str, source_query: str) -> List[ProductSchema]:
+        """
+        Faz requisição para uma página específica e extrai os produtos.
+        Implementa retry automático em caso de falha.
+        """
+        logger.debug(f"[COLETA] Requisição para: {url}")
+        response = requests.get(url, headers=self.headers, timeout=15)
+        response.raise_for_status()
+        return self._extract_from_html(response.text, source_query=source_query)
+
     def fetch_products(self, query: str, limit: int = 50) -> List[ProductSchema]:
         """
-        Coleta produtos do Mercado Livre baseado em uma query de busca.
+        Coleta produtos do Mercado Livre (sem paginação - apenas primeira página).
+        Mantido para compatibilidade com código existente.
         
         Args:
             query: Termo de busca (ex: "monitor gamer 144hz")
@@ -46,25 +182,7 @@ class CrawlerService:
         Returns:
             Lista de ProductSchema com os produtos encontrados
         """
-        logger.info(f"[COLETA] Iniciando busca por: '{query}' (limite: {limit}) | execution_id: {self.execution_id}")
-        
-        # Monta a URL de busca
-        search_url = f"{self.base_url}/{query.replace(' ', '-')}"
-        
-        try:
-            logger.info(f"[COLETA] Requisição para: {search_url}")
-            response = requests.get(search_url, headers=self.headers, timeout=15)
-            response.raise_for_status()
-            
-            # Extrai produtos do HTML
-            products = self._extract_from_html(response.text, source_query=query)
-            
-            logger.info(f"[COLETA] {len(products)} produtos extraídos, retornando {min(len(products), limit)}")
-            return products[:limit]
-            
-        except requests.RequestException as e:
-            logger.error(f"[COLETA] Erro na requisição: {e}")
-            raise
+        return self.fetch_products_paginated(query=query, limit=limit, max_pages=1)
 
     def _extract_from_html(self, html_content: str, source_query: str) -> List[ProductSchema]:
         """

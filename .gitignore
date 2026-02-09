@@ -183,3 +183,4 @@ csv_analysis_results/*.txt
 temp_csv/
 
 *.pdf
+secrets/
