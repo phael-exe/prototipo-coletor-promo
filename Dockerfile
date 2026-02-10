@@ -44,6 +44,10 @@ ENV PYTHONUNBUFFERED=1 \
 # Muda para usuário não-root
 USER appuser
 
-# Comando padrão: executa o script principal
-CMD ["python3", "scripts/bigquery_teste.py"]
+# Expõe porta da API
+EXPOSE 8000
+
+# Comando padrão: inicia a API FastAPI
+# Para rodar o script batch, use: docker run <image> python3 scripts/bigquery_teste.py
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 

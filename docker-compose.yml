@@ -14,12 +14,16 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     
+    # Expõe porta da API FastAPI
+    ports:
+      - "8000:8000"
+    
     # Monta o diretório de secrets para acessar credenciais GCP
     volumes:
       - ./secrets:/app/secrets:ro
     
-    # Política de restart: não reinicia automaticamente (batch job)
-    restart: "no"
+    # Política de restart: always para manter API rodando
+    restart: unless-stopped
     
     # Logs: limita tamanho para evitar crescimento descontrolado
     logging:

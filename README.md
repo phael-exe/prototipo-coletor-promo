@@ -114,6 +114,177 @@ python scripts/bigquery_teste.py
 
 ---
 
+## 🌐 API REST com FastAPI
+
+A aplicação possui uma API HTTP que permite disparar coletas programaticamente.
+
+### Iniciar a API
+
+```bash
+# Via Docker Compose (recomendado)
+docker compose up
+
+# Ou localmente com uvicorn
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+A API estará disponível em:
+- **Base URL**: http://localhost:8000
+- **Docs (Swagger)**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### Endpoints Disponíveis
+
+#### `GET /` - Root
+Retorna informações básicas da API.
+
+```bash
+curl http://localhost:8000/
+```
+
+#### `GET /health` - Health Check
+Verifica status da API e serviços dependentes (BigQuery).
+
+```bash
+curl http://localhost:8000/health
+```
+
+Resposta:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-02-10T12:00:00Z",
+  "version": "1.0.0",
+  "services": {
+    "crawler": "healthy",
+    "bigquery": "healthy"
+  }
+}
+```
+
+#### `POST /collect` - Iniciar Coleta
+Dispara uma coleta assíncrona de produtos.
+
+```bash
+curl -X POST http://localhost:8000/collect \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sources": ["monitor gamer 144hz", "ps5"],
+    "limit_per_source": 50,
+    "max_pages_per_source": 2,
+    "delay_between_requests": 1.5,
+    "persist_to_bigquery": true
+  }'
+```
+
+Resposta (HTTP 202):
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "execution_id": "a865239e",
+  "status": "started",
+  "message": "Coleta iniciada com sucesso. Use o task_id para consultar o resultado.",
+  "sources": ["monitor gamer 144hz", "ps5"],
+  "estimated_time_seconds": 30
+}
+```
+
+**Parâmetros:**
+
+| Campo | Tipo | Descrição | Padrão | Limites |
+|-------|------|-----------|--------|---------|
+| `sources` | `List[str]` | Termos de busca | **obrigatório** | min: 1 |
+| `limit_per_source` | `int` | Produtos por fonte | `100` | 1-500 |
+| `max_pages_per_source` | `int` | Páginas por fonte | `3` | 1-10 |
+| `delay_between_requests` | `float` | Delay em segundos | `1.5` | 0.5-5.0 |
+| `persist_to_bigquery` | `bool` | Salvar no BigQuery | `true` | - |
+
+#### `GET /collect/{task_id}` - Consultar Resultado
+Retorna o resultado de uma coleta usando o `task_id`.
+
+```bash
+curl http://localhost:8000/collect/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+Resposta:
+```json
+{
+  "execution_id": "a865239e",
+  "status": "completed",
+  "sources_processed": 2,
+  "total_products_collected": 100,
+  "products_inserted": 95,
+  "products_duplicated": 5,
+  "started_at": "2026-02-10T12:00:00Z",
+  "completed_at": "2026-02-10T12:00:45Z",
+  "error_message": null
+}
+```
+
+**Status possíveis:**
+- `completed`: Coleta concluída com sucesso
+- `failed`: Coleta falhou (veja `error_message`)
+
+### Exemplos de Uso
+
+**Python com requests:**
+```python
+import requests
+import time
+
+# 1. Inicia coleta
+response = requests.post("http://localhost:8000/collect", json={
+    "sources": ["monitor gamer", "teclado mecânico"],
+    "limit_per_source": 30,
+    "persist_to_bigquery": True
+})
+data = response.json()
+task_id = data["task_id"]
+print(f"Coleta iniciada: {task_id}")
+
+# 2. Aguarda e consulta resultado
+time.sleep(data["estimated_time_seconds"] + 10)
+result = requests.get(f"http://localhost:8000/collect/{task_id}").json()
+print(f"Produtos coletados: {result['total_products_collected']}")
+print(f"Inseridos no BQ: {result['products_inserted']}")
+```
+
+**cURL (linha de comando):**
+```bash
+# Health check
+curl http://localhost:8000/health | jq
+
+# Coleta simples
+curl -X POST http://localhost:8000/collect \
+  -H "Content-Type: application/json" \
+  -d '{"sources": ["ps5"], "limit_per_source": 20}' | jq
+
+# Consultar resultado (substitua TASK_ID)
+curl http://localhost:8000/collect/TASK_ID | jq
+```
+
+### Tratamento de Erros
+
+A API retorna erros padronizados:
+
+```json
+{
+  "error": "HTTPException",
+  "message": "Task não encontrada",
+  "details": null,
+  "timestamp": "2026-02-10T12:00:00Z"
+}
+```
+
+**Códigos HTTP:**
+- `200`: Sucesso
+- `202`: Requisição aceita (coleta em andamento)
+- `400`: Parâmetros inválidos
+- `404`: Recurso não encontrado
+- `500`: Erro interno do servidor
+
+---
+
 ## 🐳 Como Rodar com Docker
 
 ### 1. Build da imagem
@@ -459,9 +630,10 @@ $ python scripts/bigquery_teste.py
 - [x] Deduplicação por `dedupe_key`
 - [x] Coleta multi-fonte com paginação
 - [x] Dockerfile e docker-compose
-- [ ] API FastAPI com endpoint `/health`
+- [x] API FastAPI com endpoints `/health` e `/collect`
 - [ ] Deploy no Cloud Run (GCP)
 - [ ] Logs estruturados (JSON)
+- [ ] Autenticação/Rate limiting na API
 
 ---
 
@@ -470,11 +642,14 @@ $ python scripts/bigquery_teste.py
 | Tecnologia | Uso |
 |------------|-----|
 | Python 3.12 | Linguagem principal |
+| FastAPI | Framework web assíncrono |
+| Uvicorn | Servidor ASGI de alta performance |
 | requests | Requisições HTTP |
 | BeautifulSoup4 | Parsing de HTML |
 | Pydantic | Validação e schemas |
 | tenacity | Retry com backoff |
 | google-cloud-bigquery | Persistência no BigQuery |
+| Docker | Containerização |
 
 ---
 
