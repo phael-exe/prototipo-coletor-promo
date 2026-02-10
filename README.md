@@ -263,6 +263,12 @@ curl -X POST http://localhost:8000/collect \
 curl http://localhost:8000/collect/TASK_ID | jq
 ```
 
+#### Documentação Interativa (Swagger UI)
+
+Acesse a documentação automática no Swagger UI:
+
+![Swagger UI - API Documentation](app/utils/img/image.png)
+
 ### Tratamento de Erros
 
 A API retorna erros padronizados:
