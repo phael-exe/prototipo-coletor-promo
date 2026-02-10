@@ -655,11 +655,319 @@ $ python scripts/bigquery_teste.py
 | Pydantic | Validação e schemas |
 | tenacity | Retry com backoff |
 | google-cloud-bigquery | Persistência no BigQuery |
+| python-json-logger | Logs estruturados em JSON |
 | Docker | Containerização |
 
 ---
 
+## 🔐 Logs Estruturados em JSON
+
+O sistema implementa logs estruturados compatíveis com Cloud Logging:
+
+### Configuração
+
+```python
+from app.core.logging import configure_logging, get_logger
+
+# Inicializar
+configure_logging(level="INFO")
+logger = get_logger(__name__)
+
+# Usar com contexto
+logger.info("Collection started", extra={
+    "task_id": task_id,
+    "execution_id": execution_id,
+    "sources": sources
+})
+```
+
+### Campos Padrão em JSON
+
+```json
+{
+  "timestamp": "2026-02-10T23:16:02.075760+00:00",
+  "level": "info",
+  "module": "app.routes.collect",
+  "message": "Collection task completed",
+  "task_id": "31bf705c-4f78-4048-a074-3d46180fe9cf",
+  "execution_id": "59a50e2c",
+  "duration_seconds": 32.38
+}
+```
+
+Todos os logs são compatíveis com:
+- ✅ GCP Cloud Logging
+- ✅ AWS CloudWatch
+- ✅ Datadog
+- ✅ ELK Stack
+
+Para mais detalhes, veja [LOGGING_GUIDE.md](LOGGING_GUIDE.md)
+
+---
+
+## 🚀 CI/CD: GitHub Actions + Cloud Run
+
+### Fluxo Automático de Deploy
+
+```
+GitHub Release
+    ↓
+Deploy Workflow
+    ↓
+Build Docker Image
+    ↓
+Push Artifact Registry
+    ↓
+Deploy Cloud Run
+    ↓
+Health Check + Cloud Logging Setup
+```
+
+### Setup Inicial
+
+#### 1. Criar Service Account no GCP
+
+```bash
+export GCP_PROJECT_ID="seu-projeto-gcp"
+export SERVICE_ACCOUNT_NAME="github-actions-deployer"
+
+# Criar Service Account
+gcloud iam service-accounts create ${SERVICE_ACCOUNT_NAME} \
+  --project=${GCP_PROJECT_ID}
+
+# Adicionar permissões
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+  --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.admin"
+
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+  --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+  --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+  --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/logging.admin"
+
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+  --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/bigquery.admin"
+```
+
+#### 2. Criar Artifact Registry
+
+```bash
+gcloud artifacts repositories create docker-repo \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=${GCP_PROJECT_ID}
+```
+
+#### 3. Adicionar Secrets no GitHub
+
+```bash
+# Gerar chave JSON
+gcloud iam service-accounts keys create key.json \
+  --iam-account=${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com
+
+# Adicionar secrets
+gh secret set GCP_PROJECT_ID --body "seu-projeto-gcp"
+gh secret set GCP_REGION --body "us-central1"
+gh secret set GCP_DATASET_ID --body "promocoes_teste"
+gh secret set GCP_SA_KEY --body "$(cat key.json)"
+gh secret set GCP_CLOUD_RUN_SA --body "cloud-run-app@seu-projeto-gcp.iam.gserviceaccount.com"
+
+rm key.json
+```
+
+### Fazer Deploy
+
+**Opção 1: Release (Automático)**
+```bash
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+**Opção 2: Manual (workflow_dispatch)**
+```bash
+gh workflow run deploy.yml -f environment=staging
+```
+
+O workflow fará automaticamente:
+- ✅ Build da imagem Docker
+- ✅ Push para Artifact Registry
+- ✅ Deploy no Cloud Run
+- ✅ Health check
+- ✅ Configuração de Cloud Logging
+
+---
+
+## 📊 BigQuery: Queries Úteis
+
+### 1. Total de Produtos
+
+```sql
+SELECT 
+  COUNT(*) as total_products,
+  COUNT(DISTINCT dedupe_key) as unique_products,
+  COUNT(DISTINCT execution_id) as total_collections,
+  ROUND(AVG(price), 2) as avg_price
+FROM `{project}.{dataset}.promotions`
+```
+
+### 2. Produtos por Fonte
+
+```sql
+SELECT 
+  source,
+  COUNT(*) as total,
+  COUNT(DISTINCT dedupe_key) as unique_items,
+  ROUND(AVG(price), 2) as avg_price,
+  COUNTIF(discount_percent > 0) as on_sale
+FROM `{project}.{dataset}.promotions`
+GROUP BY source
+ORDER BY total DESC
+```
+
+### 3. Descontos Mais Altos
+
+```sql
+SELECT 
+  title,
+  source,
+  price,
+  original_price,
+  discount_percent,
+  url
+FROM `{project}.{dataset}.promotions`
+WHERE discount_percent IS NOT NULL
+ORDER BY discount_percent DESC
+LIMIT 20
+```
+
+### 4. Evolução de Coletas por Dia
+
+```sql
+SELECT 
+  DATE(collected_at) as data,
+  COUNT(*) as produtos,
+  COUNT(DISTINCT execution_id) as coletas,
+  ROUND(AVG(price), 2) as preco_medio
+FROM `{project}.{dataset}.promotions`
+GROUP BY data
+ORDER BY data DESC
+```
+
+### 5. Histórico de Preços de um Produto
+
+```sql
+SELECT 
+  title,
+  collected_at,
+  price,
+  discount_percent,
+  LAG(price) OVER (ORDER BY collected_at) as preco_anterior,
+  ROUND((price - LAG(price) OVER (ORDER BY collected_at)) / 
+        LAG(price) OVER (ORDER BY collected_at) * 100, 2) as variacao_pct
+FROM `{project}.{dataset}.promotions`
+WHERE LOWER(title) LIKE '%ps5%'
+ORDER BY collected_at DESC
+```
+
+### 6. Produtos Mais Buscados
+
+```sql
+SELECT 
+  source,
+  COUNT(*) as vezes_encontrado,
+  ROUND(AVG(price), 2) as preco_medio,
+  COUNTIF(discount_percent > 0) as com_desconto
+FROM `{project}.{dataset}.promotions`
+GROUP BY source
+ORDER BY vezes_encontrado DESC
+LIMIT 20
+```
+
+**Substitua:**
+- `{project}` → Seu GCP Project ID
+- `{dataset}` → Seu Dataset BigQuery
+
+Para mais queries, veja [BIGQUERY_QUERIES.md](BIGQUERY_QUERIES.md)
+
+---
+
+## 🔍 Monitoramento
+
+### Cloud Logging
+
+Acesse os logs estruturados:
+```
+https://console.cloud.google.com/logs/query?project=seu-projeto-gcp
+```
+
+**Filtros úteis:**
+```
+# Todos os logs da aplicação
+resource.type="cloud_run_revision"
+jsonPayload.module=~"app.*"
+
+# Apenas erros
+resource.type="cloud_run_revision"
+jsonPayload.level="error"
+
+# Logs de uma task específica
+resource.type="cloud_run_revision"
+jsonPayload.task_id="sua-task-id"
+```
+
+### Cloud Run Dashboard
+
+```
+https://console.cloud.google.com/run?project=seu-projeto-gcp
+```
+
+Visualize:
+- Status das deployments
+- Performance metrics
+- Erros e logs
+- Traffic patterns
+
+### BigQuery
+
+```
+https://console.cloud.google.com/bigquery?project=seu-projeto-gcp
+```
+
+Analise os dados coletados em tempo real
+
+---
+
 ## 📜 Changelog
+
+### v1.2.0 - Logs Estruturados em JSON (2026-02-10)
+
+Release com migração completa para logs estruturados:
+
+- **Logs em JSON**: Estrutura padrão com timestamp, level, module
+- **python-json-logger**: Integração com Cloud Logging
+- **Contexto completo**: execution_id, task_id em cada log
+- **Remoção de prints**: Todos substituídos por logger calls
+- **Cloud Logging ready**: Pronto para GCP
+
+Para detalhes, veja [CHANGELOG.md](CHANGELOG.md)
+
+### v1.1.0 - API REST com FastAPI (2026-02-10)
+
+Release focada em transformar a aplicação em serviço web:
+
+- **API REST**: 4 endpoints (GET /, GET /health, POST /collect, GET /collect/{task_id})
+- **Documentação automática**: Swagger UI + ReDoc
+- **Coleta assíncrona**: BackgroundTasks do FastAPI
+- **Schemas validados**: Pydantic models para requests/responses
+- **Tratamento de erros**: JSON standardizado
 
 ### v1.0.0 - Primeira Release (2026-02-09) 🎉
 
@@ -697,3 +1005,4 @@ O GitHub Actions criará automaticamente a release com os artefatos.
 ---
 
 > Desenvolvido para o processo seletivo PromoZone
+
