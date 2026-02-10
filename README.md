@@ -857,8 +857,8 @@ $ python scripts/bigquery_teste.py
 - [x] Coleta multi-fonte com paginação
 - [x] Dockerfile e docker-compose
 - [x] API FastAPI com endpoints `/health` e `/collect`
-- [ ] Deploy no Cloud Run (GCP)
-- [ ] Logs estruturados (JSON)
+- [x] Deploy no Cloud Run (GCP)
+- [x] Logs estruturados (JSON)
 - [ ] Autenticação/Rate limiting na API
 
 ---
