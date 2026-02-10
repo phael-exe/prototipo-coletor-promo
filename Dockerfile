@@ -56,6 +56,3 @@ EXPOSE 8000
 # Comando padrão: inicia a API FastAPI
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Para rodar o script batch, use: docker run <image> python3 scripts/bigquery_teste.py
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
