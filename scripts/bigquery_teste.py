@@ -145,7 +145,7 @@ def main():
     print("✅ COLETA FINALIZADA!")
     print("="*70)
     print(f"\n🔗 Verifique no console:")
-    print(f"   https://console.cloud.google.com/bigquery?project=promozone-ml")
+    print(f"   https://console.cloud.google.com/bigquery")
 
 if __name__ == "__main__":
     main()

@@ -215,10 +215,10 @@ docker logs <container-id>
 O `docker-compose.yml` carrega automaticamente do arquivo `.env`:
 
 ```env
-FIRECRAWL_API_KEY="fc-ca5e63e06bfa4f14ad7a805e07df09a7"
+FIRECRAWL_API_KEY="sua-chave-aqui"
 USER_AGENT="Mozilla/5.0 (X11; Linux x86_64)..."
-GCP_PROJECT_ID="promozone-ml"
-GCP_DATASET_ID="promocoes_teste"
+GCP_PROJECT_ID="seu-projeto-gcp"
+GCP_DATASET_ID="seu_dataset"
 GOOGLE_APPLICATION_CREDENTIALS="secrets/gcp-credentials.json"
 ```
 
@@ -240,7 +240,7 @@ gcloud run jobs create coletor-promocoes \
   --region us-central1 \
   --memory 512Mi \
   --cpu 1 \
-  --set-env-vars GCP_PROJECT_ID=SEU-PROJETO,GCP_DATASET_ID=promocoes_teste
+  --set-env-vars GCP_PROJECT_ID=SEU-PROJETO,GCP_DATASET_ID=seu_dataset \
 
 # 4. Executar job
 gcloud run jobs execute coletor-promocoes --region us-central1
@@ -402,8 +402,8 @@ def insert_products(self, products: List[ProductSchema]) -> dict:
 | `MAX_RETRIES` | Tentativas máximas em caso de falha | 3 |
 | `RETRY_MIN_SECONDS` | Tempo mínimo entre retries | 2 |
 | `RETRY_MAX_SECONDS` | Tempo máximo entre retries | 10 |
-| `GCP_PROJECT_ID` | ID do projeto GCP | `promozone-ml` |
-| `GCP_DATASET_ID` | ID do dataset BigQuery | `promocoes_teste` |
+| `GCP_PROJECT_ID` | ID do projeto GCP | - |
+| `GCP_DATASET_ID` | ID do dataset BigQuery | - |
 
 ---
 
