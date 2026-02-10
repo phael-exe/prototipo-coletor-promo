@@ -39,7 +39,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     GCP_PROJECT_ID=promozone-ml \
-    GCP_DATASET_ID=promocoes_teste
+    GCP_DATASET_ID=promocoes_teste \
+    LOG_LEVEL=INFO \
+    ENABLE_CLOUD_LOGGING=true
+
+# Cria diretório para secrets (credenciais GCP)
+RUN mkdir -p /app/secrets && chmod 700 /app/secrets && \
+    chown -R appuser:appuser /app
 
 # Muda para usuário não-root
 USER appuser
@@ -48,6 +54,8 @@ USER appuser
 EXPOSE 8000
 
 # Comando padrão: inicia a API FastAPI
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
 # Para rodar o script batch, use: docker run <image> python3 scripts/bigquery_teste.py
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
