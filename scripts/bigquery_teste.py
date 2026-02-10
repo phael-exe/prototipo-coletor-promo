@@ -14,7 +14,20 @@ root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
 
 # Configura a variável de ambiente para as credenciais
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(root_dir, "secrets/promozone-ml-e258435d25fc.json")
+# Procura por qualquer arquivo .json em secrets/ se GOOGLE_APPLICATION_CREDENTIALS não estiver setada
+if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+    secrets_dir = os.path.join(root_dir, "secrets")
+    if os.path.exists(secrets_dir):
+        json_files = [f for f in os.listdir(secrets_dir) if f.endswith('.json')]
+        if json_files:
+            # Usa o primeiro arquivo JSON encontrado
+            credentials_file = os.path.join(secrets_dir, json_files[0])
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_file
+            print(f"✅ Credenciais GCP encontradas: {json_files[0]}")
+        else:
+            print("❌ Nenhum arquivo .json encontrado em secrets/")
+    else:
+        print("❌ Diretório secrets/ não encontrado")
 
 from app.services.crawler import CrawlerService
 from app.services.bigquery import BigQueryService

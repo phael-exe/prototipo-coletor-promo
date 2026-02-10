@@ -13,7 +13,6 @@ services:
     # Sobrescreve ou adiciona variáveis de ambiente específicas
     environment:
       - PYTHONUNBUFFERED=1
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/promozone-ml-e258435d25fc.json
     
     # Monta o diretório de secrets para acessar credenciais GCP
     volumes:
