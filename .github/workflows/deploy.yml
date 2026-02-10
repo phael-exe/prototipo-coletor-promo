@@ -31,7 +31,6 @@ jobs:
     
     env:
       IMAGE_TAG: ${{ github.ref_name }}
-      ARTIFACT_REGISTRY_URL: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}
 
     steps:
       - name: 📥 Checkout código
@@ -88,61 +87,46 @@ jobs:
       - name: 🌍 Deploy to Cloud Run (Staging)
         if: github.event_name == 'release' || github.event.inputs.environment == 'staging'
         run: |
-          gcloud run deploy ${{ env.IMAGE_NAME }}-staging \
+          gcloud run deploy coletor-promo \
             --image "${{ steps.image.outputs.image_uri }}" \
             --platform managed \
             --region ${{ env.GCP_REGION }} \
             --allow-unauthenticated \
-            --set-env-vars "ENVIRONMENT=staging" \
+            --set-env-vars "ENVIRONMENT=staging,GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATASET_ID=${{ secrets.GCP_DATASET_ID }},LOG_LEVEL=INFO,ENABLE_CLOUD_LOGGING=true" \
             --memory 512Mi \
             --cpu 1 \
             --timeout 3600 \
             --max-instances 10 \
-            --min-instances 1 \
-            --service-account ${{ secrets.GCP_CLOUD_RUN_SA }} \
-            --update-secrets "GOOGLE_APPLICATION_CREDENTIALS=/app/secrets:latest" \
-            --labels "version=${{ steps.image.outputs.image_tag }},commit=${{ github.sha }},environment=staging" \
-            --update-headers "X-Custom-Header=cloud-run-deployment"
+            --labels "version=${{ steps.image.outputs.image_tag }},commit=${{ github.sha }},environment=staging"
 
       - name: 🌍 Deploy to Cloud Run (Production)
         if: github.event.inputs.environment == 'production'
         run: |
-          gcloud run deploy ${{ env.IMAGE_NAME }} \
+          gcloud run deploy coletor-promo \
             --image "${{ steps.image.outputs.image_uri }}" \
             --platform managed \
             --region ${{ env.GCP_REGION }} \
             --allow-unauthenticated \
-            --set-env-vars "ENVIRONMENT=production" \
+            --set-env-vars "ENVIRONMENT=production,GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATASET_ID=${{ secrets.GCP_DATASET_ID }},LOG_LEVEL=INFO,ENABLE_CLOUD_LOGGING=true" \
             --memory 1Gi \
             --cpu 2 \
             --timeout 3600 \
             --max-instances 50 \
-            --min-instances 2 \
-            --service-account ${{ secrets.GCP_CLOUD_RUN_SA }} \
-            --update-secrets "GOOGLE_APPLICATION_CREDENTIALS=/app/secrets:latest" \
-            --labels "version=${{ steps.image.outputs.image_tag }},commit=${{ github.sha }},environment=production" \
-            --update-headers "X-Custom-Header=cloud-run-deployment"
+            --labels "version=${{ steps.image.outputs.image_tag }},commit=${{ github.sha }},environment=production"
 
       - name: 📊 Get Cloud Run service details
         id: service
         run: |
-          SERVICE_NAME="${{ env.IMAGE_NAME }}-staging"
-          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
-            SERVICE_NAME="${{ env.IMAGE_NAME }}"
-          fi
-          
-          URL=$(gcloud run services describe ${SERVICE_NAME} \
+          URL=$(gcloud run services describe coletor-promo \
             --platform managed \
             --region ${{ env.GCP_REGION }} \
             --format='value(status.url)')
           
           echo "url=${URL}" >> $GITHUB_OUTPUT
-          echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
+          echo "service_name=coletor-promo" >> $GITHUB_OUTPUT
 
       - name: ✅ Deployment verification
         run: |
-          SERVICE_NAME="${{ steps.service.outputs.service_name }}"
-          
           # Wait for service to be ready
           echo "⏳ Waiting for service to be ready..."
           sleep 10
@@ -158,19 +142,10 @@ jobs:
 
       - name: 🔍 Cloud Logging Configuration
         run: |
-          SERVICE_NAME="${{ steps.service.outputs.service_name }}"
-          
           echo "📊 Setting up Cloud Logging..."
           
-          # Create log sink for JSON-structured logs
-          gcloud logging sinks create cloud-run-json-sink \
-            logging.googleapis.com/projects/${{ secrets.GCP_PROJECT_ID }}/logs/cloud-run-json \
-            --log-filter='resource.type="cloud_run_revision" AND jsonPayload.module=~"app.*"' \
-            --location=${{ env.GCP_REGION }} \
-            2>/dev/null || echo "Log sink may already exist"
-          
           # Enable detailed logging in Cloud Run
-          gcloud run services update ${SERVICE_NAME} \
+          gcloud run services update coletor-promo \
             --region ${{ env.GCP_REGION }} \
             --set-env-vars LOG_LEVEL=INFO,ENABLE_CLOUD_LOGGING=true \
             2>/dev/null || true
