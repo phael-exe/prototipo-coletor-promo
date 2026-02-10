@@ -1,0 +1,30 @@
+services:
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: prototipo-coletor-promo:latest
+    container_name: coletor-promocoes
+    
+    # Carrega variáveis de ambiente do arquivo .env
+    env_file:
+      - .env
+    
+    # Sobrescreve ou adiciona variáveis de ambiente específicas
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/promozone-ml-e258435d25fc.json
+    
+    # Monta o diretório de secrets para acessar credenciais GCP
+    volumes:
+      - ./secrets:/app/secrets:ro
+    
+    # Política de restart: não reinicia automaticamente (batch job)
+    restart: "no"
+    
+    # Logs: limita tamanho para evitar crescimento descontrolado
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
