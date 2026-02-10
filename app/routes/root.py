@@ -4,6 +4,10 @@ Endpoint raiz da API.
 """
 from fastapi import APIRouter
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 router = APIRouter()
 
 
@@ -14,9 +18,12 @@ router = APIRouter()
 )
 async def root():
     """Endpoint raiz com informações da API"""
+    logger.debug("Root endpoint accessed")
+    
     return {
         "name": "Coletor de Promoções ML API",
         "version": "1.0.0",
+
         "status": "running",
         "docs": "/docs",
         "health": "/health"

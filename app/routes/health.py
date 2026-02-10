@@ -2,15 +2,15 @@
 """
 Endpoint de health check.
 """
-import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, status
 
+from app.core.logging import get_logger
 from app.schemas.api import HealthResponse
 from app.services.bigquery import BigQueryService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -39,15 +39,25 @@ async def health_check():
         # Tenta uma operação simples para verificar conectividade
         bq.client.get_dataset(bq.dataset_id)
         services_status["bigquery"] = "healthy"
-        logger.info("✅ BigQuery health check: OK")
+        logger.info("BigQuery health check passed",
+                   extra={"service": "bigquery"})
     except Exception as e:
         services_status["bigquery"] = f"unhealthy: {str(e)}"
         overall_status = "degraded"
-        logger.error(f"❌ BigQuery health check failed: {e}")
+        logger.error("BigQuery health check failed",
+                    extra={"service": "bigquery", "error": str(e)},
+                    exc_info=True)
+    
+    logger.debug("Health check completed",
+                extra={
+                    "overall_status": overall_status,
+                    "services": services_status
+                })
     
     return HealthResponse(
         status=overall_status,
         timestamp=datetime.now(timezone.utc),
         version="1.0.0",
         services=services_status
+
     )

@@ -11,8 +11,89 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Deploy no Cloud Run (GCP)
 - Autenticação/Rate limiting na API
 - Redis para cache de tasks
-- Logs estruturados (JSON)
 - Testes automatizados
+
+---
+
+## [1.2.0] - 2026-02-10
+
+### 📊 Logs Estruturados em JSON
+
+Release focada em migrar de logs de texto simples para JSON estruturado, facilitando integração com Cloud Logging.
+
+### Adicionado
+
+#### Sistema de Logging Estruturado
+- Novo módulo `app/core/logging.py` com configuração centralizada
+- Custom formatter `CustomJsonFormatter` para JSON estruturado
+- Função `configure_logging()` para inicializar logger raiz
+- Função `get_logger()` para criar loggers estruturados por módulo
+- Suporte a `extra` fields para contexto adicional (execution_id, task_id, etc)
+- Timestamps em ISO 8601 com timezone UTC
+- Normalização de níveis para minúsculas (info, warning, error)
+
+#### Campos JSON Padronizados
+- `timestamp` - ISO 8601 com timezone
+- `level` - Nível em minúsculas (debug, info, warning, error, critical)
+- `name` / `module` - Nome do logger/módulo que gerou o log
+- `message` - Mensagem principal
+- `execution_id` - ID de execução (quando disponível)
+- `task_id` - ID de task (quando disponível)
+- Campos customizados via `extra` dict
+
+#### Migrações de Código
+- `app/main.py` - Usa `configure_logging()` e `get_logger()`
+- `app/routes/collect.py` - Logs estruturados para tasks async
+- `app/routes/health.py` - Logs estruturados para health check
+- `app/routes/root.py` - Logs estruturados para raiz
+- `app/services/crawler.py` - Usa `get_logger()`
+- `app/services/bigquery.py` - Usa `get_logger()`
+- `scripts/bigquery_teste.py` - Completamente refatorado com JSON logs
+- `scripts/crawler_teste.py` - Completamente refatorado com JSON logs
+
+#### Remoção de Prints
+- Todos os `print()` em scripts foram substituídos por `logger.info()` / `logger.warning()` / `logger.error()`
+- Emojis removidos (mantém-se funcionais em logs estruturados via extra fields)
+- Mensagens resumidas e estruturadas
+
+### Mudanças
+
+#### Requirements
+- Adicionado `python-json-logger` para serialização JSON
+- Dependência necessária para Cloud Logging integration
+
+#### Importações
+- `from app.core.logging import configure_logging, get_logger` em módulos apropriados
+- Remoção de `import logging` em favor de `from app.core.logging import get_logger`
+
+#### Loggers
+- Todos os `logging.getLogger(__name__)` foram substituídos por `get_logger(__name__)`
+- Logger raiz configurado automaticamente em `app/main.py`
+- Verbosidade de bibliotecas externas reduzida (urllib3, google, google.cloud)
+
+### Benefícios
+
+- ✅ Compatível com GCP Cloud Logging
+- ✅ Filtros estruturados em ferramentas de observabilidade
+- ✅ Contexto completo (execution_id, task_id) em cada log
+- ✅ Timestamps precisos para correlação
+- ✅ Sem perda de informações de debugging
+- ✅ Pronto para migração para produção em cloud
+
+### Exemplo de Log Estruturado
+
+```json
+{
+  "timestamp": "2026-02-10T23:07:58.532793+00:00",
+  "level": "info",
+  "module": "app.routes.collect",
+  "message": "Collection task scheduled",
+  "task_id": "550e8400-e29b-41d4-a716-446655440000",
+  "execution_id": "a1b2c3d4",
+  "sources_count": 2,
+  "estimated_time_seconds": 45
+}
+```
 
 ---
 

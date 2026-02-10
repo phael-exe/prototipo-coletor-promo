@@ -7,15 +7,13 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.logging import configure_logging, get_logger
 from app.routes import register_routers
 from app.schemas.api import ErrorResponse
 
-# Configuração de logs
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# Configura logging estruturado em JSON
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 
 @asynccontextmanager

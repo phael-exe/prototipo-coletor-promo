@@ -9,9 +9,10 @@ from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.schemas.product import ProductSchema
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Schema da tabela no BigQuery (baseado no desafio)
 TABLE_SCHEMA = [

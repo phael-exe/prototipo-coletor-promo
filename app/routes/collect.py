@@ -9,11 +9,12 @@ from typing import Dict
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
+from app.core.logging import get_logger
 from app.schemas.api import CollectRequest, CollectResponse, CollectResult
 from app.services.bigquery import BigQueryService
 from app.services.crawler import CrawlerService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -33,8 +34,14 @@ def run_collection_task(
     started_at = datetime.now(timezone.utc)
     
     try:
-        logger.info(f"🔍 Iniciando coleta [task_id={task_id}, execution_id={execution_id}]")
-        logger.info(f"📋 Fontes: {request.sources}")
+        logger.info("Starting collection task",
+                   extra={
+                       "task_id": task_id,
+                       "execution_id": execution_id,
+                       "sources": request.sources,
+                       "limit_per_source": request.limit_per_source,
+                       "max_pages_per_source": request.max_pages_per_source
+                   })
         
         # 1. Instancia o crawler
         crawler = CrawlerService()
@@ -54,7 +61,13 @@ def run_collection_task(
         for products in results.values():
             all_products.extend(products)
         
-        logger.info(f"✅ Coletados {len(all_products)} produtos de {len(results)} fontes")
+        logger.info("Products collected",
+                   extra={
+                       "task_id": task_id,
+                       "execution_id": execution_id,
+                       "total_products": len(all_products),
+                       "sources_count": len(results)
+                   })
         
         # 4. Persiste no BigQuery se solicitado
         products_inserted = None
@@ -66,9 +79,21 @@ def run_collection_task(
                 insert_result = bq.insert_products(all_products)
                 products_inserted = insert_result['inserted']
                 products_duplicated = insert_result['duplicates']
-                logger.info(f"💾 BigQuery: {products_inserted} inseridos, {products_duplicated} duplicados")
+                logger.info("BigQuery insertion completed",
+                           extra={
+                               "task_id": task_id,
+                               "execution_id": execution_id,
+                               "inserted": products_inserted,
+                               "duplicates": products_duplicated
+                           })
             except Exception as e:
-                logger.error(f"❌ Erro ao persistir no BigQuery: {e}")
+                logger.error("BigQuery insertion failed",
+                            extra={
+                                "task_id": task_id,
+                                "execution_id": execution_id,
+                                "error": str(e)
+                            },
+                            exc_info=True)
                 raise
         
         # 5. Armazena resultado
@@ -85,10 +110,21 @@ def run_collection_task(
             error_message=None
         )
         
-        logger.info(f"✅ Coleta concluída [task_id={task_id}]")
+        logger.info("Collection task completed",
+                   extra={
+                       "task_id": task_id,
+                       "execution_id": execution_id,
+                       "duration_seconds": (completed_at - started_at).total_seconds()
+                   })
         
     except Exception as e:
-        logger.error(f"❌ Erro na coleta [task_id={task_id}]: {e}", exc_info=True)
+        logger.error("Collection task failed",
+                    extra={
+                        "task_id": task_id,
+                        "execution_id": execution_id,
+                        "error": str(e)
+                    },
+                    exc_info=True)
         
         # Armazena erro
         task_results[task_id] = CollectResult(
@@ -100,6 +136,7 @@ def run_collection_task(
             completed_at=datetime.now(timezone.utc),
             error_message=str(e)
         )
+
 
 
 @router.post(
@@ -158,7 +195,13 @@ async def collect_products(
             request=request
         )
         
-        logger.info(f"📨 Nova coleta agendada [task_id={task_id}, execution_id={execution_id}]")
+        logger.info("Collection task scheduled",
+                   extra={
+                       "task_id": task_id,
+                       "execution_id": execution_id,
+                       "sources_count": len(request.sources),
+                       "estimated_time_seconds": estimated_time
+                   })
         
         return CollectResponse(
             task_id=task_id,
@@ -170,7 +213,9 @@ async def collect_products(
         )
         
     except Exception as e:
-        logger.error(f"❌ Erro ao iniciar coleta: {e}", exc_info=True)
+        logger.error("Failed to schedule collection task",
+                    extra={"error": str(e)},
+                    exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao iniciar coleta: {str(e)}"
@@ -198,9 +243,14 @@ async def get_collect_result(task_id: str):
     Se a task ainda não terminou, retorna 404.
     """
     if task_id not in task_results:
+        logger.warning("Collection task result not found",
+                      extra={"task_id": task_id})
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} não encontrada. Ela pode ainda estar em execução ou o ID é inválido."
         )
     
+    logger.debug("Collection task result retrieved",
+                extra={"task_id": task_id})
     return task_results[task_id]
+

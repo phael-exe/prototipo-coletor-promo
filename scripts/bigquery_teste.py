@@ -2,16 +2,16 @@ import logging
 import os
 import sys
 
-# Configuração de logs
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
 # Adiciona o diretório raiz ao PYTHONPATH
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 sys.path.append(root_dir)
+
+# Configura logging estruturado em JSON
+from app.core.logging import configure_logging, get_logger
+
+configure_logging(level="INFO")
+logger = get_logger(__name__)
 
 # Configura a variável de ambiente para as credenciais
 # Procura por qualquer arquivo .json em secrets/ se GOOGLE_APPLICATION_CREDENTIALS não estiver setada
@@ -23,11 +23,11 @@ if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
             # Usa o primeiro arquivo JSON encontrado
             credentials_file = os.path.join(secrets_dir, json_files[0])
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_file
-            print(f"✅ Credenciais GCP encontradas: {json_files[0]}")
+            logger.info("GCP credentials found", extra={"credentials_file": json_files[0]})
         else:
-            print("❌ Nenhum arquivo .json encontrado em secrets/")
+            logger.warning("No JSON files found in secrets/")
     else:
-        print("❌ Diretório secrets/ não encontrado")
+        logger.warning("secrets/ directory not found")
 
 from app.services.bigquery import BigQueryService
 from app.services.crawler import CrawlerService
@@ -46,35 +46,31 @@ DELAY_BETWEEN_REQUESTS = 1.5  # Delay entre requisições (rate limit)
 
 
 def main():
-    print("\n" + "="*70)
-    print("🗄️  COLETA MULTI-FONTE COM PAGINAÇÃO + BIGQUERY")
-    print("="*70 + "\n")
+    logger.info("Starting multi-source collection with BigQuery persistence",
+                extra={"sources": SOURCES, "limit_per_source": LIMIT_PER_SOURCE})
 
     # 1. Instancia os serviços
     try:
         crawler = CrawlerService()
-        print(f"✅ Crawler instanciado (execution_id: {crawler.execution_id})")
+        logger.info("Crawler service initialized", extra={"execution_id": crawler.execution_id})
         
         bq = BigQueryService()
-        print(f"✅ BigQuery conectado: {bq.table_id}")
+        logger.info("BigQuery service connected", extra={"table_id": bq.table_id})
     except Exception as e:
-        print(f"❌ Erro ao iniciar serviços: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Failed to initialize services", exc_info=True)
         return
 
-    # 2. Exibe configuração
-    print("\n📋 CONFIGURAÇÃO:")
-    print(f"   Fontes: {SOURCES}")
-    print(f"   Limite por fonte: {LIMIT_PER_SOURCE}")
-    print(f"   Máx. páginas por fonte: {MAX_PAGES_PER_SOURCE}")
-    print(f"   Delay entre requisições: {DELAY_BETWEEN_REQUESTS}s")
-    print()
+    # 2. Log configuração
+    logger.info("Collection configuration",
+                extra={
+                    "sources": SOURCES,
+                    "limit_per_source": LIMIT_PER_SOURCE,
+                    "max_pages_per_source": MAX_PAGES_PER_SOURCE,
+                    "delay_between_requests": DELAY_BETWEEN_REQUESTS
+                })
 
     # 3. Coleta de múltiplas fontes com paginação
-    print("="*70)
-    print("🔍 INICIANDO COLETA")
-    print("="*70 + "\n")
+    logger.info("Starting collection process")
     
     try:
         results = crawler.fetch_from_sources(
@@ -84,68 +80,67 @@ def main():
             delay_between_requests=DELAY_BETWEEN_REQUESTS
         )
     except Exception as e:
-        print(f"❌ Erro na coleta: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Collection failed", exc_info=True)
         return
 
     # 4. Resumo da coleta por fonte
-    print("\n" + "="*70)
-    print("📊 RESUMO DA COLETA POR FONTE")
-    print("="*70)
+    logger.info("Collection summary by source")
     
     all_products = []
     for source, products in results.items():
         all_products.extend(products)
         em_promo = sum(1 for p in products if p.has_discount)
-        print(f"\n📦 {source}")
-        print(f"   Produtos coletados: {len(products)}")
-        print(f"   Em promoção: {em_promo}")
-        if products:
-            avg_price = sum(p.price for p in products) / len(products)
-            print(f"   Preço médio: R$ {avg_price:.2f}")
+        avg_price = sum(p.price for p in products) / len(products) if products else 0
+        logger.info("Source collection complete",
+                    extra={
+                        "source": source,
+                        "products_collected": len(products),
+                        "on_promotion": em_promo,
+                        "average_price": avg_price
+                    })
     
-    print(f"\n🎯 TOTAL COLETADO: {len(all_products)} produtos")
-    print(f"   Páginas requisitadas: {crawler.stats['pages_fetched']}")
+    logger.info("Total collection completed",
+                extra={
+                    "total_products": len(all_products),
+                    "pages_fetched": crawler.stats['pages_fetched'],
+                    "sources_processed": crawler.stats['sources_processed']
+                })
 
     # 5. Insere no BigQuery
-    print("\n" + "="*70)
-    print("💾 INSERINDO NO BIGQUERY")
-    print("="*70 + "\n")
+    logger.info("Starting BigQuery insertion")
     
     try:
         result = bq.insert_products(all_products)
-        print("📊 RESULTADO DA INSERÇÃO:")
-        print(f"   ✅ Inseridos:   {result['inserted']}")
-        print(f"   ⏭️  Duplicados:  {result['duplicates']}")
-        print(f"   ❌ Erros:       {result['errors']}")
+        logger.info("BigQuery insertion completed",
+                    extra={
+                        "inserted": result['inserted'],
+                        "duplicates": result['duplicates'],
+                        "errors": result['errors']
+                    })
     except Exception as e:
-        print(f"❌ Erro na inserção: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("BigQuery insertion failed", exc_info=True)
         return
 
     # 6. Estatísticas finais do BigQuery
-    print("\n" + "="*70)
-    print("📈 ESTATÍSTICAS DO BIGQUERY")
-    print("="*70)
+    logger.info("Fetching BigQuery statistics")
     
     try:
         stats = bq.get_stats()
         if stats:
-            print(f"\n   Total de produtos:    {stats.get('total_products', 0)}")
-            print(f"   Itens únicos:         {stats.get('unique_items', 0)}")
-            print(f"   Total de execuções:   {stats.get('total_executions', 0)}")
-            print(f"   Produtos em promoção: {stats.get('products_on_sale', 0)}")
-            print(f"   Preço médio geral:    R$ {stats.get('avg_price', 0):.2f}")
+            logger.info("BigQuery statistics",
+                        extra={
+                            "total_products": stats.get('total_products', 0),
+                            "unique_items": stats.get('unique_items', 0),
+                            "total_executions": stats.get('total_executions', 0),
+                            "products_on_sale": stats.get('products_on_sale', 0),
+                            "average_price": stats.get('avg_price', 0)
+                        })
     except Exception as e:
-        print(f"⚠️  Erro ao buscar stats: {e}")
+        logger.warning("Failed to fetch BigQuery statistics", exc_info=True)
 
-    print("\n" + "="*70)
-    print("✅ COLETA FINALIZADA!")
-    print("="*70)
-    print("\n🔗 Verifique no console:")
-    print("   https://console.cloud.google.com/bigquery")
+    logger.info("Collection workflow completed successfully")
+
 
 if __name__ == "__main__":
     main()
+

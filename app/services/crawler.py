@@ -10,10 +10,11 @@ from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.schemas.product import ProductSchema
 
 # Configuração de logs
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Constantes
 ITEMS_PER_PAGE = 50  # ML mostra ~50 itens por página com _NoIndex_True
