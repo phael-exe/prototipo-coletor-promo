@@ -1,7 +1,9 @@
 # app/schemas/product.py
-from pydantic import BaseModel, Field, computed_field
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field, computed_field
+
 
 class ProductSchema(BaseModel):
     """

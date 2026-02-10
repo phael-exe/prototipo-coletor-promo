@@ -1,6 +1,6 @@
-import sys
-import os
 import logging
+import os
+import sys
 
 # Configuração de logs
 logging.basicConfig(
@@ -28,7 +28,7 @@ def main():
     # 1. Instanciação
     try:
         crawler = CrawlerService()
-        print(f"✅ Serviço Crawler instanciado")
+        print("✅ Serviço Crawler instanciado")
         print(f"   execution_id: {crawler.execution_id}\n")
     except Exception as e:
         print(f"❌ Erro ao iniciar o serviço: {e}")

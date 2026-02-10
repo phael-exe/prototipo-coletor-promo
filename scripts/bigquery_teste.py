@@ -1,6 +1,6 @@
-import sys
-import os
 import logging
+import os
+import sys
 
 # Configuração de logs
 logging.basicConfig(
@@ -29,8 +29,8 @@ if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
     else:
         print("❌ Diretório secrets/ não encontrado")
 
-from app.services.crawler import CrawlerService
 from app.services.bigquery import BigQueryService
+from app.services.crawler import CrawlerService
 
 # Configuração das fontes de busca
 SOURCES = [
@@ -64,7 +64,7 @@ def main():
         return
 
     # 2. Exibe configuração
-    print(f"\n📋 CONFIGURAÇÃO:")
+    print("\n📋 CONFIGURAÇÃO:")
     print(f"   Fontes: {SOURCES}")
     print(f"   Limite por fonte: {LIMIT_PER_SOURCE}")
     print(f"   Máx. páginas por fonte: {MAX_PAGES_PER_SOURCE}")
@@ -115,7 +115,7 @@ def main():
     
     try:
         result = bq.insert_products(all_products)
-        print(f"📊 RESULTADO DA INSERÇÃO:")
+        print("📊 RESULTADO DA INSERÇÃO:")
         print(f"   ✅ Inseridos:   {result['inserted']}")
         print(f"   ⏭️  Duplicados:  {result['duplicates']}")
         print(f"   ❌ Erros:       {result['errors']}")
@@ -144,8 +144,8 @@ def main():
     print("\n" + "="*70)
     print("✅ COLETA FINALIZADA!")
     print("="*70)
-    print(f"\n🔗 Verifique no console:")
-    print(f"   https://console.cloud.google.com/bigquery")
+    print("\n🔗 Verifique no console:")
+    print("   https://console.cloud.google.com/bigquery")
 
 if __name__ == "__main__":
     main()

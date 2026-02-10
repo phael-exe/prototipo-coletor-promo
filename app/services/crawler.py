@@ -1,12 +1,14 @@
 import logging
 import re
-import uuid
 import time
-from typing import List, Dict
+import uuid
 from datetime import datetime, timezone
+from typing import Dict, List
+
 import requests
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
+
 from app.core.config import settings
 from app.schemas.product import ProductSchema
 
@@ -142,7 +144,7 @@ class CrawlerService:
                 
                 # Para se a página veio com menos produtos que o esperado (última página)
                 if len(products) < ITEMS_PER_PAGE * 0.5:  # Menos de 50% da capacidade
-                    logger.info(f"[COLETA] Página parcial detectada, provavelmente última página")
+                    logger.info("[COLETA] Página parcial detectada, provavelmente última página")
                     break
                 
                 # Rate limit entre páginas

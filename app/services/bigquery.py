@@ -1,13 +1,15 @@
 # app/services/bigquery.py
-import logging
 import json
+import logging
 import tempfile
-from typing import List, Optional
 from datetime import datetime, timezone
+from typing import List, Optional
+
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
-from app.schemas.product import ProductSchema
+
 from app.core.config import settings
+from app.schemas.product import ProductSchema
 
 logger = logging.getLogger(__name__)
 
