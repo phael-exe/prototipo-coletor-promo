@@ -1,7 +1,7 @@
 # Desafio Técnico: Coletor de promoções do Mercado Livre
 
-[![CI](https://github.com/phaelzin/prototipo-coletor-promo/actions/workflows/ci.yml/badge.svg)](https://github.com/phaelzin/prototipo-coletor-promo/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/phaelzin/prototipo-coletor-promo?include_prereleases)](https://github.com/phaelzin/prototipo-coletor-promo/releases)
+[![CI](https://github.com/phael-exe/prototipo-coletor-promo/actions/workflows/ci.yml/badge.svg)](https://github.com/phael-exe/prototipo-coletor-promo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/phael-exe/prototipo-coletor-promo?include_prereleases)](https://github.com/phaelzin/prototipo-coletor-promo/releases)
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
