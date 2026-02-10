@@ -31,7 +31,39 @@ prototipo-coletor-promo/
 ├── secrets/                   # Credenciais GCP (não versionado)
 ├── .env                       # Variáveis de ambiente (não versionado)
 ├── .env.template              # Template das variáveis necessárias
-└── requirements.txt           # Dependências Python
+├── .dockerignore              # Exclusões para build Docker
+├── Dockerfile                 # Multi-stage build para Python 3.12
+├── docker-compose.yml         # Orquestração de containers
+├── requirements.txt           # Dependências Python
+├── README.md                  # Este arquivo
+├── CHANGELOG.md               # Histórico de mudanças
+└── LICENSE                    # Licença MIT
+```
+
+### 📦 Estrutura de Containers
+
+```
+┌─────────────────────────────────────────────────┐
+│         docker-compose.yml                      │
+│  ┌───────────────────────────────────────────┐  │
+│  │  Service: collector                       │  │
+│  │  ┌─────────────────────────────────────┐  │  │
+│  │  │ Dockerfile (Multi-stage)            │  │  │
+│  │  │ • Stage 1 (Builder): gcc + deps     │  │  │
+│  │  │ • Stage 2 (Runtime): app only       │  │  │
+│  │  │                                     │  │  │
+│  │  │ Image: prototipo-coletor-promo      │  │  │
+│  │  └─────────────────────────────────────┘  │  │
+│  │         ↓                                   │  │
+│  │  Volumes:                                   │  │
+│  │  • ./secrets → /app/secrets (ro)           │  │
+│  │                                             │  │
+│  │  Environment:                               │  │
+│  │  • .env file (GCP credentials, API keys)   │  │
+│  │  • PYTHONUNBUFFERED=1                      │  │
+│  │  • GOOGLE_APPLICATION_CREDENTIALS          │  │
+│  └───────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────┘
 ```
 
 ## 🚀 Como Rodar Localmente
@@ -78,6 +110,147 @@ export GOOGLE_APPLICATION_CREDENTIALS="secrets/<seu-arquivo>.json"
 
 ```bash
 python scripts/bigquery_teste.py
+```
+
+---
+
+## 🐳 Como Rodar com Docker
+
+### 1. Build da imagem
+
+```bash
+# Build usando docker-compose
+docker compose build
+
+# Ou build manual com Docker
+docker build -t prototipo-coletor-promo:latest .
+```
+
+### 2. Executar com Docker Compose
+
+```bash
+# Rodar uma vez e exibir logs
+docker compose up
+
+# Rodar em background
+docker compose up -d
+
+# Ver logs de execução
+docker compose logs -f collector
+
+# Limpar containers e volumes
+docker compose down
+```
+
+### 3. Executar com Docker direto
+
+```bash
+# Sem variáveis de ambiente
+docker run --rm \
+  -v ./secrets:/app/secrets:ro \
+  -v ./.env:/app/.env:ro \
+  prototipo-coletor-promo:latest
+
+# Com variáveis de ambiente passadas explicitamente
+docker run --rm \
+  -v ./secrets:/app/secrets:ro \
+  -e GCP_PROJECT_ID="seu-projeto-gcp" \
+  -e GCP_DATASET_ID="seu_dataset" \
+  -e GOOGLE_APPLICATION_CREDENTIALS="/app/secrets/gcp-credentials.json" \
+  prototipo-coletor-promo:latest
+```
+
+### ⚠️ Configurar credenciais GCP para Docker
+
+A containerização requer que as credenciais GCP estejam acessíveis. Existem duas abordagens:
+
+**Opção A: Montar arquivo JSON (Desenvolvimento local)**
+
+```bash
+# Certifique-se de que as credenciais estão em ./secrets/
+ls ./secrets/gcp-credentials.json
+
+# Execute com volume mounted
+docker compose up
+```
+
+**Opção B: Passar JSON como variável de ambiente (Cloud Run recomendado)**
+
+1. Converta o arquivo JSON para variável de ambiente:
+```bash
+export GCP_CREDENTIALS_JSON=$(cat secrets/gcp-credentials.json | base64)
+```
+
+2. Modifique o `Dockerfile` (stage 2) para suportar:
+```dockerfile
+# No Dockerfile, após ENV PYTHONUNBUFFERED=1
+ARG GCP_CREDENTIALS_JSON
+RUN if [ -n "$GCP_CREDENTIALS_JSON" ]; then \
+      echo "$GCP_CREDENTIALS_JSON" | base64 -d > /app/secrets/credentials.json && \
+      export GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/credentials.json; \
+    fi
+```
+
+3. Build e run:
+```bash
+docker build --build-arg GCP_CREDENTIALS_JSON="$GCP_CREDENTIALS_JSON" \
+  -t prototipo-coletor-promo:latest .
+```
+
+### 🔍 Verificar imagem Docker
+
+```bash
+# Ver tamanho da imagem
+docker images prototipo-coletor-promo
+
+# Inspecionar layers
+docker inspect prototipo-coletor-promo:latest
+
+# Ver logs do container
+docker logs <container-id>
+```
+
+### 📋 Variáveis de ambiente no Docker
+
+O `docker-compose.yml` carrega automaticamente do arquivo `.env`:
+
+```env
+FIRECRAWL_API_KEY="fc-ca5e63e06bfa4f14ad7a805e07df09a7"
+USER_AGENT="Mozilla/5.0 (X11; Linux x86_64)..."
+GCP_PROJECT_ID="promozone-ml"
+GCP_DATASET_ID="promocoes_teste"
+GOOGLE_APPLICATION_CREDENTIALS="secrets/gcp-credentials.json"
+```
+
+**Nota**: Variáveis são sobrescritas pelo `docker-compose.yml` se conflitarem.
+
+### 🚀 Deploy no Google Cloud Run
+
+```bash
+# 1. Configure gcloud CLI
+gcloud auth login
+gcloud config set project SEU-PROJETO-GCP
+
+# 2. Build e push para Artifact Registry
+gcloud builds submit --tag gcr.io/SEU-PROJETO/coletor-promo:latest
+
+# 3. Deploy como Cloud Run Job
+gcloud run jobs create coletor-promocoes \
+  --image gcr.io/SEU-PROJETO/coletor-promo:latest \
+  --region us-central1 \
+  --memory 512Mi \
+  --cpu 1 \
+  --set-env-vars GCP_PROJECT_ID=SEU-PROJETO,GCP_DATASET_ID=promocoes_teste
+
+# 4. Executar job
+gcloud run jobs execute coletor-promocoes --region us-central1
+
+# 5. Agendar execução periódica com Cloud Scheduler
+gcloud scheduler jobs create app-engine coletor-diario \
+  --schedule="0 2 * * *" \
+  --http-method=POST \
+  --uri=https://SEU-REGION-SEU-PROJETO.cloudfunctions.net/trigger-job \
+  --oidc-service-account-email=SEU-EMAIL@iam.gserviceaccount.com
 ```
 
 ---
@@ -285,8 +458,8 @@ $ python scripts/bigquery_teste.py
 - [x] Persistência no BigQuery
 - [x] Deduplicação por `dedupe_key`
 - [x] Coleta multi-fonte com paginação
+- [x] Dockerfile e docker-compose
 - [ ] API FastAPI com endpoint `/health`
-- [ ] Dockerfile e docker-compose
 - [ ] Deploy no Cloud Run (GCP)
 - [ ] Logs estruturados (JSON)
 
