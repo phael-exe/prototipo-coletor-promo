@@ -487,17 +487,237 @@ Serviço de persistência que:
 
 ---
 
+## � Fontes Coletadas
+
+Atualmente, o sistema coleta dados do **Mercado Livre** via:
+
+| Fonte | Estratégia | Status |
+|-------|-----------|--------|
+| **Mercado Livre** | Web scraping com paginação dinâmica | ✅ Ativo |
+
+### Query de Busca
+- Aceita múltiplas queries simultâneas
+- Exemplo: "ps5", "monitor 144hz", "teclado mecânico"
+- Retorna produtos ordenados por relevância
+- Suporta paginação automática (até 1000 itens por query)
+
+---
+
 ## 🔑 Estratégia de Deduplicação
 
 A deduplicação é implementada usando a estratégia de **verificação pré-inserção** com `dedupe_key`.
 
 ### Composição da `dedupe_key`
 
-```
+```python
 dedupe_key = f"{marketplace}_{item_id}_{price}"
 ```
 
 Exemplo: `mercado_livre_MLB1234567_1299.90`
+
+### Fluxo de Deduplicação
+
+```
+┌─────────────────────────────────────┐
+│  Produto coletado                   │
+├─────────────────────────────────────┤
+│  Gera dedupe_key                    │
+│  (marketplace + item_id + price)    │
+├─────────────────────────────────────┤
+│  Busca no BigQuery                  │
+│  WHERE dedupe_key = ?               │
+├─────────────────────────────────────┤
+│  JÁ EXISTE? ↙─────────────┐         │
+│  NÃO EXISTE? ↘             │         │
+│              Descarta      │         │
+│              Insere        │         │
+└─────────────────────────────────────┘
+```
+
+### Vantagens desta Abordagem
+
+| Aspecto | Benefício |
+|--------|----------|
+| **Performance** | O(1) lookup com índice |
+| **Precisão** | Detecta mesmo produto com preço diferente |
+| **Simplicidade** | Sem necessidade de dados históricos |
+| **Flexibilidade** | Permite preço variar em nova coleta |
+
+---
+
+## 🗄️ Schema do BigQuery
+
+### Tabela: `promotions`
+
+```sql
+CREATE TABLE IF NOT EXISTS `{project}.{dataset}.promotions` (
+  -- Identificação
+  marketplace STRING NOT NULL,           -- 'mercado_livre'
+  item_id STRING NOT NULL,               -- 'MLB1234567890'
+  dedupe_key STRING NOT NULL,            -- 'mercado_livre_MLB1234567_1299.90'
+  
+  -- Informações do Produto
+  title STRING NOT NULL,                 -- Título do produto
+  price FLOAT64 NOT NULL,                -- Preço atual
+  original_price FLOAT64,                -- Preço original (antes desconto)
+  discount_percent FLOAT64,              -- % de desconto (calculado)
+  seller STRING,                         -- Nome do vendedor
+  
+  -- Links e Mídia
+  url STRING NOT NULL,                   -- URL do produto
+  image_url STRING,                      -- URL da imagem principal
+  
+  -- Contexto da Coleta
+  source STRING NOT NULL,                -- Query que gerou (ex: 'ps5')
+  execution_id STRING NOT NULL,          -- ID único da execução
+  collected_at TIMESTAMP NOT NULL,       -- Quando foi coletado
+  
+  -- Metadata
+  _inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()  -- Timestamp de inserção
+);
+```
+
+### Índices Recomendados
+
+```sql
+-- Para deduplicação rápida
+CREATE INDEX dedupe_idx ON `{project}.{dataset}.promotions` (dedupe_key);
+
+-- Para buscas por data
+CREATE INDEX date_idx ON `{project}.{dataset}.promotions` (DATE(collected_at));
+
+-- Para análise por source
+CREATE INDEX source_idx ON `{project}.{dataset}.promotions` (source);
+```
+
+### Query de Validação: Últimas 24 Horas
+
+```sql
+-- Itens coletados nas últimas 24 horas
+SELECT 
+  DATETIME(CURRENT_TIMESTAMP(), 'America/Sao_Paulo') as momento_consulta,
+  COUNT(*) as itens_coletados,
+  COUNT(DISTINCT dedupe_key) as itens_unicos,
+  COUNT(DISTINCT execution_id) as execucoes,
+  COUNT(DISTINCT source) as queries_diferentes,
+  ROUND(AVG(price), 2) as preco_medio,
+  COUNTIF(discount_percent > 0) as itens_em_promocao,
+  ROUND(AVG(discount_percent), 2) as desconto_medio
+FROM `{project}.{dataset}.promotions`
+WHERE DATE(collected_at, 'America/Sao_Paulo') = CURRENT_DATE('America/Sao_Paulo')
+GROUP BY 1;
+```
+
+**Resultado esperado:**
+```
+momento_consulta              itens_coletados  itens_unicos  execucoes  ...
+2026-02-10 15:30:45           1250             950           3          ...
+```
+
+---
+
+## ⚙️ Trade-offs Implementados
+
+### 1. **Deduplicação Pré-Inserção vs Pós-Inserção**
+
+| Escolha | Razão |
+|---------|-------|
+| ✅ **Pré-Inserção (implementado)** | Economiza quota BigQuery (free tier) |
+| ❌ Pós-Inserção | Consome mais quota e INSERT/UPDATE |
+
+### 2. **Compartilhar JSON Logger vs Logger Padrão**
+
+| Escolha | Razão |
+|---------|-------|
+| ✅ **JSON Logger (implementado)** | Compatível com Cloud Logging |
+| ❌ Logger padrão | Difícil de parsear em produção |
+
+### 3. **Cloud Run Service vs Cloud Run Job**
+
+| Escolha | Razão |
+|---------|-------|
+| ✅ **Cloud Run Service (implementado)** | Sempre disponível via HTTP, melhor observabilidade |
+| ❌ Cloud Run Job | Mais caro para execuções frequentes |
+
+### 4. **LOAD JOB vs INSERT Statements**
+
+| Escolha | Razão |
+|---------|-------|
+| ✅ **LOAD JOB (implementado)** | 1 job = muitas linhas, compatível com free tier |
+| ❌ INSERT Statements | N jobs = N inserts, consome quota rápido |
+
+### 5. **Single Execution ID vs Multiple**
+
+| Escolha | Razão |
+|---------|-------|
+| ✅ **Single per request (implementado)** | Agrupa coletas relacionadas, rastreabilidade |
+| ❌ Multiple per product | Difícil correlacionar erros |
+
+---
+
+## 📐 Diagrama da Arquitetura
+
+```mermaid
+graph TB
+    User["👤 Usuário"]
+    GitHub["🐙 GitHub"]
+    API["🚀 FastAPI Server"]
+    Crawler["🕷️ Web Scraper"]
+    ML["🛒 Mercado Livre"]
+    GCS["☁️ Google Cloud Storage"]
+    BQ["📊 BigQuery"]
+    CloudRun["☁️ Cloud Run"]
+    CloudLogging["📋 Cloud Logging"]
+    
+    User -->|1. POST /collect| API
+    API -->|2. Start Background Task| Crawler
+    Crawler -->|3. Fetch + Parse| ML
+    Crawler -->|4. Dedupe Check| BQ
+    Crawler -->|5. Load Job| GCS
+    GCS -->|6. Bulk Insert| BQ
+    API -->|7. Return task_id| User
+    API -->|8. Logs em JSON| CloudLogging
+    CloudLogging -->|9. Visualiza| User
+    
+    GitHub -->|Auto Deploy| CloudRun
+    CloudRun -->|Executa| API
+    
+    style API fill:#4285f4,color:#fff
+    style BQ fill:#f59e0b,color:#fff
+    style CloudRun fill:#4285f4,color:#fff
+    style Crawler fill:#10b981,color:#fff
+    style CloudLogging fill:#8b5cf6,color:#fff
+```
+
+### Fluxo Detalhado
+
+```
+1. REQUISIÇÃO
+   POST /collect { sources: ["ps5"], limit_per_source: 50 }
+   ↓
+2. ACEITAÇÃO
+   202 Accepted { task_id, estimated_time }
+   ↓
+3. PROCESSAMENTO (Background)
+   For each source:
+     → Fetch paginated results from Mercado Livre
+     → Parse HTML with BeautifulSoup
+     → Create Product models
+     → Check dedupe_keys in BigQuery
+     → Filter duplicates
+   ↓
+4. PERSISTÊNCIA
+   → Stage deduplicated products to GCS
+   → Load to BigQuery via LOAD JOB
+   ↓
+5. RESULTADO
+   GET /collect/{task_id}
+   ← { status: completed, inserted: 45, duplicated: 5 }
+   ↓
+6. OBSERVABILIDADE
+   → All logs to Cloud Logging as JSON
+   → Metrics available in BigQuery
+```
 
 ### Fluxo de Deduplicação
 
