@@ -1005,4 +1005,3 @@ O GitHub Actions criará automaticamente a release com os artefatos.
 ---
 
 > Desenvolvido para o processo seletivo PromoZone
-

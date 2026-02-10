@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 
@@ -18,7 +17,7 @@ logger = get_logger(__name__)
 if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
     secrets_dir = os.path.join(root_dir, "secrets")
     if os.path.exists(secrets_dir):
-        json_files = [f for f in os.listdir(secrets_dir) if f.endswith('.json')]
+        json_files = [f for f in os.listdir(secrets_dir) if f.endswith(".json")]
         if json_files:
             # Usa o primeiro arquivo JSON encontrado
             credentials_file = os.path.join(secrets_dir, json_files[0])
@@ -53,10 +52,10 @@ def main():
     try:
         crawler = CrawlerService()
         logger.info("Crawler service initialized", extra={"execution_id": crawler.execution_id})
-        
+
         bq = BigQueryService()
         logger.info("BigQuery service connected", extra={"table_id": bq.table_id})
-    except Exception as e:
+    except Exception:
         logger.error("Failed to initialize services", exc_info=True)
         return
 
@@ -66,26 +65,26 @@ def main():
                     "sources": SOURCES,
                     "limit_per_source": LIMIT_PER_SOURCE,
                     "max_pages_per_source": MAX_PAGES_PER_SOURCE,
-                    "delay_between_requests": DELAY_BETWEEN_REQUESTS
+                    "delay_between_requests": DELAY_BETWEEN_REQUESTS,
                 })
 
     # 3. Coleta de múltiplas fontes com paginação
     logger.info("Starting collection process")
-    
+
     try:
         results = crawler.fetch_from_sources(
             sources=SOURCES,
             limit_per_source=LIMIT_PER_SOURCE,
             max_pages_per_source=MAX_PAGES_PER_SOURCE,
-            delay_between_requests=DELAY_BETWEEN_REQUESTS
+            delay_between_requests=DELAY_BETWEEN_REQUESTS,
         )
-    except Exception as e:
+    except Exception:
         logger.error("Collection failed", exc_info=True)
         return
 
     # 4. Resumo da coleta por fonte
     logger.info("Collection summary by source")
-    
+
     all_products = []
     for source, products in results.items():
         all_products.extend(products)
@@ -96,46 +95,46 @@ def main():
                         "source": source,
                         "products_collected": len(products),
                         "on_promotion": em_promo,
-                        "average_price": avg_price
+                        "average_price": avg_price,
                     })
-    
+
     logger.info("Total collection completed",
                 extra={
                     "total_products": len(all_products),
-                    "pages_fetched": crawler.stats['pages_fetched'],
-                    "sources_processed": crawler.stats['sources_processed']
+                    "pages_fetched": crawler.stats["pages_fetched"],
+                    "sources_processed": crawler.stats["sources_processed"],
                 })
 
     # 5. Insere no BigQuery
     logger.info("Starting BigQuery insertion")
-    
+
     try:
         result = bq.insert_products(all_products)
         logger.info("BigQuery insertion completed",
                     extra={
-                        "inserted": result['inserted'],
-                        "duplicates": result['duplicates'],
-                        "errors": result['errors']
+                        "inserted": result["inserted"],
+                        "duplicates": result["duplicates"],
+                        "errors": result["errors"],
                     })
-    except Exception as e:
+    except Exception:
         logger.error("BigQuery insertion failed", exc_info=True)
         return
 
     # 6. Estatísticas finais do BigQuery
     logger.info("Fetching BigQuery statistics")
-    
+
     try:
         stats = bq.get_stats()
         if stats:
             logger.info("BigQuery statistics",
                         extra={
-                            "total_products": stats.get('total_products', 0),
-                            "unique_items": stats.get('unique_items', 0),
-                            "total_executions": stats.get('total_executions', 0),
-                            "products_on_sale": stats.get('products_on_sale', 0),
-                            "average_price": stats.get('avg_price', 0)
+                            "total_products": stats.get("total_products", 0),
+                            "unique_items": stats.get("unique_items", 0),
+                            "total_executions": stats.get("total_executions", 0),
+                            "products_on_sale": stats.get("products_on_sale", 0),
+                            "average_price": stats.get("avg_price", 0),
                         })
-    except Exception as e:
+    except Exception:
         logger.warning("Failed to fetch BigQuery statistics", exc_info=True)
 
     logger.info("Collection workflow completed successfully")

@@ -1,5 +1,4 @@
 # app/main.py
-import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -48,8 +47,8 @@ async def http_exception_handler(request, exc: HTTPException):
         content=ErrorResponse(
             error=exc.__class__.__name__,
             message=exc.detail,
-            timestamp=datetime.now(timezone.utc)
-        ).model_dump(mode="json")
+            timestamp=datetime.now(timezone.utc),
+        ).model_dump(mode="json"),
     )
 
 
@@ -63,8 +62,8 @@ async def general_exception_handler(request, exc: Exception):
             error="InternalServerError",
             message="Erro interno do servidor. Verifique os logs para mais detalhes.",
             details={"error_type": exc.__class__.__name__},
-            timestamp=datetime.now(timezone.utc)
-        ).model_dump(mode="json")
+            timestamp=datetime.now(timezone.utc),
+        ).model_dump(mode="json"),
     )
 
 
@@ -75,5 +74,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
-        log_level="info"
+        log_level="info",
     )

@@ -1,11 +1,8 @@
 # app/routes/collect.py
+"""Endpoints de coleta de produtos.
 """
-Endpoints de coleta de produtos.
-"""
-import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
@@ -19,20 +16,19 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 # Cache em memória para resultados de tarefas (em produção, usar Redis ou similar)
-task_results: Dict[str, CollectResult] = {}
+task_results: dict[str, CollectResult] = {}
 
 
 def run_collection_task(
     task_id: str,
     execution_id: str,
-    request: CollectRequest
+    request: CollectRequest,
 ):
-    """
-    Executa a tarefa de coleta em background.
+    """Executa a tarefa de coleta em background.
     Armazena o resultado no cache task_results.
     """
     started_at = datetime.now(timezone.utc)
-    
+
     try:
         logger.info("Starting collection task",
                    extra={
@@ -40,62 +36,62 @@ def run_collection_task(
                        "execution_id": execution_id,
                        "sources": request.sources,
                        "limit_per_source": request.limit_per_source,
-                       "max_pages_per_source": request.max_pages_per_source
+                       "max_pages_per_source": request.max_pages_per_source,
                    })
-        
+
         # 1. Instancia o crawler
         crawler = CrawlerService()
         # Sobrescreve execution_id para manter consistência
         crawler.execution_id = execution_id
-        
+
         # 2. Coleta produtos
         results = crawler.fetch_from_sources(
             sources=request.sources,
             limit_per_source=request.limit_per_source,
             max_pages_per_source=request.max_pages_per_source,
-            delay_between_requests=request.delay_between_requests
+            delay_between_requests=request.delay_between_requests,
         )
-        
+
         # 3. Agrega todos os produtos
         all_products = []
         for products in results.values():
             all_products.extend(products)
-        
+
         logger.info("Products collected",
                    extra={
                        "task_id": task_id,
                        "execution_id": execution_id,
                        "total_products": len(all_products),
-                       "sources_count": len(results)
+                       "sources_count": len(results),
                    })
-        
+
         # 4. Persiste no BigQuery se solicitado
         products_inserted = None
         products_duplicated = None
-        
+
         if request.persist_to_bigquery and all_products:
             try:
                 bq = BigQueryService()
                 insert_result = bq.insert_products(all_products)
-                products_inserted = insert_result['inserted']
-                products_duplicated = insert_result['duplicates']
+                products_inserted = insert_result["inserted"]
+                products_duplicated = insert_result["duplicates"]
                 logger.info("BigQuery insertion completed",
                            extra={
                                "task_id": task_id,
                                "execution_id": execution_id,
                                "inserted": products_inserted,
-                               "duplicates": products_duplicated
+                               "duplicates": products_duplicated,
                            })
             except Exception as e:
                 logger.error("BigQuery insertion failed",
                             extra={
                                 "task_id": task_id,
                                 "execution_id": execution_id,
-                                "error": str(e)
+                                "error": str(e),
                             },
                             exc_info=True)
                 raise
-        
+
         # 5. Armazena resultado
         completed_at = datetime.now(timezone.utc)
         task_results[task_id] = CollectResult(
@@ -107,25 +103,25 @@ def run_collection_task(
             products_duplicated=products_duplicated,
             started_at=started_at,
             completed_at=completed_at,
-            error_message=None
+            error_message=None,
         )
-        
+
         logger.info("Collection task completed",
                    extra={
                        "task_id": task_id,
                        "execution_id": execution_id,
-                       "duration_seconds": (completed_at - started_at).total_seconds()
+                       "duration_seconds": (completed_at - started_at).total_seconds(),
                    })
-        
+
     except Exception as e:
         logger.error("Collection task failed",
                     extra={
                         "task_id": task_id,
                         "execution_id": execution_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
                     exc_info=True)
-        
+
         # Armazena erro
         task_results[task_id] = CollectResult(
             execution_id=execution_id,
@@ -134,7 +130,7 @@ def run_collection_task(
             total_products_collected=0,
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),
-            error_message=str(e)
+            error_message=str(e),
         )
 
 
@@ -149,14 +145,13 @@ def run_collection_task(
         202: {"description": "Coleta iniciada com sucesso"},
         400: {"description": "Parâmetros inválidos"},
         500: {"description": "Erro interno do servidor"},
-    }
+    },
 )
 async def collect_products(
     request: CollectRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
 ):
-    """
-    Inicia uma coleta assíncrona de produtos.
+    """Inicia uma coleta assíncrona de produtos.
     
     A coleta roda em background e não bloqueia a resposta HTTP.
     Use o `task_id` retornado para consultar o resultado via GET /collect/{task_id}.
@@ -182,43 +177,43 @@ async def collect_products(
         # Gera IDs únicos
         task_id = str(uuid.uuid4())
         execution_id = str(uuid.uuid4())[:8]
-        
+
         # Calcula tempo estimado (aproximado)
         total_pages = len(request.sources) * request.max_pages_per_source
         estimated_time = int(total_pages * (request.delay_between_requests + 2))  # +2s para processamento
-        
+
         # Inicia task em background
         background_tasks.add_task(
             run_collection_task,
             task_id=task_id,
             execution_id=execution_id,
-            request=request
+            request=request,
         )
-        
+
         logger.info("Collection task scheduled",
                    extra={
                        "task_id": task_id,
                        "execution_id": execution_id,
                        "sources_count": len(request.sources),
-                       "estimated_time_seconds": estimated_time
+                       "estimated_time_seconds": estimated_time,
                    })
-        
+
         return CollectResponse(
             task_id=task_id,
             execution_id=execution_id,
             status="started",
             message="Coleta iniciada com sucesso. Use o task_id para consultar o resultado.",
             sources=request.sources,
-            estimated_time_seconds=estimated_time
+            estimated_time_seconds=estimated_time,
         )
-        
+
     except Exception as e:
         logger.error("Failed to schedule collection task",
                     extra={"error": str(e)},
                     exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erro ao iniciar coleta: {str(e)}"
+            detail=f"Erro ao iniciar coleta: {e!s}",
         )
 
 
@@ -230,11 +225,10 @@ async def collect_products(
     responses={
         200: {"description": "Resultado encontrado"},
         404: {"description": "Task não encontrada"},
-    }
+    },
 )
 async def get_collect_result(task_id: str):
-    """
-    Consulta o resultado de uma coleta em andamento ou concluída.
+    """Consulta o resultado de uma coleta em andamento ou concluída.
     
     **Status possíveis:**
     - `completed`: Coleta concluída com sucesso
@@ -247,9 +241,9 @@ async def get_collect_result(task_id: str):
                       extra={"task_id": task_id})
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} não encontrada. Ela pode ainda estar em execução ou o ID é inválido."
+            detail=f"Task {task_id} não encontrada. Ela pode ainda estar em execução ou o ID é inválido.",
         )
-    
+
     logger.debug("Collection task result retrieved",
                 extra={"task_id": task_id})
     return task_results[task_id]

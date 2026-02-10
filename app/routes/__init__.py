@@ -1,6 +1,5 @@
 # app/routes/__init__.py
-"""
-Módulo de rotas da API.
+"""Módulo de rotas da API.
 Centraliza o registro de todos os routers.
 """
 from fastapi import FastAPI

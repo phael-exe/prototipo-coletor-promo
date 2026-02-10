@@ -1,9 +1,7 @@
 # app/services/bigquery.py
 import json
-import logging
 import tempfile
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
@@ -36,31 +34,28 @@ TABLE_NAME = "promotions"
 
 
 class BigQueryService:
-    """
-    Serviço para persistência de dados no BigQuery.
+    """Serviço para persistência de dados no BigQuery.
     Implementa inserção com deduplicação.
     """
 
     def __init__(self):
-        """
-        Inicializa o cliente BigQuery.
+        """Inicializa o cliente BigQuery.
         Usa credenciais do arquivo JSON via variável de ambiente GOOGLE_APPLICATION_CREDENTIALS
         ou do arquivo configurado em GCP_CREDENTIALS_PATH.
         """
         self.project_id = settings.GCP_PROJECT_ID
         self.dataset_id = settings.GCP_DATASET_ID
         self.table_id = f"{self.project_id}.{self.dataset_id}.{TABLE_NAME}"
-        
+
         # Inicializa cliente (usa GOOGLE_APPLICATION_CREDENTIALS automaticamente)
         self.client = bigquery.Client(project=self.project_id)
-        
+
         logger.info(f"[BIGQUERY] Conectado ao projeto: {self.project_id}")
         logger.info(f"[BIGQUERY] Dataset: {self.dataset_id}")
         logger.info(f"[BIGQUERY] Tabela: {self.table_id}")
 
     def ensure_table_exists(self) -> None:
-        """
-        Garante que a tabela existe. Se não existir, cria com o schema definido.
+        """Garante que a tabela existe. Se não existir, cria com o schema definido.
         """
         try:
             self.client.get_table(self.table_id)
@@ -71,9 +66,8 @@ class BigQueryService:
             table = self.client.create_table(table)
             logger.info(f"[BIGQUERY] Tabela {TABLE_NAME} criada com sucesso!")
 
-    def insert_products(self, products: List[ProductSchema]) -> dict:
-        """
-        Insere produtos no BigQuery com deduplicação.
+    def insert_products(self, products: list[ProductSchema]) -> dict:
+        """Insere produtos no BigQuery com deduplicação.
         Usa LOAD JOB (funciona no free tier) em vez de streaming insert.
         
         Args:
@@ -81,6 +75,7 @@ class BigQueryService:
             
         Returns:
             dict com estatísticas: inserted, duplicates, errors
+
         """
         if not products:
             logger.warning("[BIGQUERY] Nenhum produto para inserir")
@@ -88,17 +83,17 @@ class BigQueryService:
 
         # Garante que a tabela existe
         self.ensure_table_exists()
-        
+
         # Busca dedupe_keys existentes
         existing_keys = self._get_existing_dedupe_keys([p.dedupe_key for p in products])
-        
+
         # Filtra produtos novos (não duplicados)
         new_products = [p for p in products if p.dedupe_key not in existing_keys]
         duplicates = len(products) - len(new_products)
-        
+
         if duplicates > 0:
             logger.info(f"[BIGQUERY] {duplicates} produtos duplicados ignorados")
-        
+
         if not new_products:
             logger.info("[BIGQUERY] Todos os produtos já existem na tabela")
             return {"inserted": 0, "duplicates": duplicates, "errors": 0}
@@ -106,7 +101,7 @@ class BigQueryService:
         # Prepara rows para inserção via LOAD JOB (funciona no free tier)
         inserted_at = datetime.now(timezone.utc)
         rows_to_insert = []
-        
+
         for p in new_products:
             row = {
                 "marketplace": p.marketplace,
@@ -128,28 +123,28 @@ class BigQueryService:
 
         # Usa LOAD JOB com arquivo NDJSON temporário (funciona no free tier!)
         try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 for row in rows_to_insert:
-                    f.write(json.dumps(row) + '\n')
+                    f.write(json.dumps(row) + "\n")
                 temp_file = f.name
-            
+
             job_config = bigquery.LoadJobConfig(
                 source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
                 schema=TABLE_SCHEMA,
             )
-            
-            with open(temp_file, 'rb') as source_file:
+
+            with open(temp_file, "rb") as source_file:
                 job = self.client.load_table_from_file(
                     source_file,
                     self.table_id,
-                    job_config=job_config
+                    job_config=job_config,
                 )
-            
+
             job.result()  # Aguarda conclusão
-            
+
             logger.info(f"[BIGQUERY] {len(new_products)} produtos inseridos com sucesso!")
             return {"inserted": len(new_products), "duplicates": duplicates, "errors": 0}
-            
+
         except Exception as e:
             logger.error(f"[BIGQUERY] Erro na inserção: {e}")
             return {"inserted": 0, "duplicates": duplicates, "errors": 1}
@@ -157,22 +152,21 @@ class BigQueryService:
         logger.info(f"[BIGQUERY] {len(new_products)} produtos inseridos com sucesso!")
         return {"inserted": len(new_products), "duplicates": duplicates, "errors": 0}
 
-    def _get_existing_dedupe_keys(self, keys: List[str]) -> set:
-        """
-        Busca quais dedupe_keys já existem na tabela.
+    def _get_existing_dedupe_keys(self, keys: list[str]) -> set:
+        """Busca quais dedupe_keys já existem na tabela.
         """
         if not keys:
             return set()
 
         # Formata keys para a query
         keys_str = ", ".join([f"'{k}'" for k in keys])
-        
+
         query = f"""
             SELECT DISTINCT dedupe_key 
             FROM `{self.table_id}`
             WHERE dedupe_key IN ({keys_str})
         """
-        
+
         try:
             result = self.client.query(query).result()
             existing = {row.dedupe_key for row in result}
@@ -182,9 +176,8 @@ class BigQueryService:
             # Tabela não existe ainda
             return set()
 
-    def get_recent_products(self, hours: int = 24, limit: int = 100) -> List[dict]:
-        """
-        Retorna produtos coletados nas últimas X horas.
+    def get_recent_products(self, hours: int = 24, limit: int = 100) -> list[dict]:
+        """Retorna produtos coletados nas últimas X horas.
         Útil para validação e relatórios.
         """
         query = f"""
@@ -194,7 +187,7 @@ class BigQueryService:
             ORDER BY collected_at DESC
             LIMIT {limit}
         """
-        
+
         try:
             result = self.client.query(query).result()
             return [dict(row) for row in result]
@@ -203,8 +196,7 @@ class BigQueryService:
             return []
 
     def get_stats(self) -> dict:
-        """
-        Retorna estatísticas da tabela.
+        """Retorna estatísticas da tabela.
         """
         query = f"""
             SELECT 
@@ -217,7 +209,7 @@ class BigQueryService:
                 COUNT(CASE WHEN discount_percent IS NOT NULL THEN 1 END) as products_on_sale
             FROM `{self.table_id}`
         """
-        
+
         try:
             result = list(self.client.query(query).result())[0]
             return dict(result)

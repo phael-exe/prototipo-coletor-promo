@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 
@@ -15,7 +14,7 @@ logger = get_logger(__name__)
 
 try:
     from app.services.crawler import CrawlerService
-except ImportError as e:
+except ImportError:
     logger.error("Import error when loading CrawlerService", exc_info=True)
     sys.exit(1)
 
@@ -26,7 +25,7 @@ def main():
     try:
         crawler = CrawlerService()
         logger.info("Crawler service initialized", extra={"execution_id": crawler.execution_id})
-    except Exception as e:
+    except Exception:
         logger.error("Failed to initialize CrawlerService", exc_info=True)
         return
 
@@ -39,11 +38,11 @@ def main():
     # 3. Execução
     try:
         produtos = crawler.fetch_products(query=termo, limit=limite)
-        
+
         logger.info("Collection completed",
                     extra={
                         "products_collected": len(produtos),
-                        "execution_id": crawler.execution_id
+                        "execution_id": crawler.execution_id,
                     })
 
         if not produtos:
@@ -63,22 +62,22 @@ def main():
                             "discount_percent": float(p.discount_percent) if p.discount_percent else None,
                             "has_discount": p.has_discount,
                             "dedupe_key": p.dedupe_key,
-                            "execution_id": p.execution_id
+                            "execution_id": p.execution_id,
                         })
 
         # 5. Resumo estatístico
         em_promocao = sum(1 for p in produtos if p.has_discount)
         media_preco = sum(p.price for p in produtos) / len(produtos) if produtos else 0
-        
+
         logger.info("Collection summary",
                     extra={
                         "total_collected": len(produtos),
                         "on_promotion": em_promocao,
                         "average_price": float(media_preco),
-                        "query": termo
+                        "query": termo,
                     })
 
-    except Exception as e:
+    except Exception:
         logger.error("Critical error during search", exc_info=True)
 
 if __name__ == "__main__":
