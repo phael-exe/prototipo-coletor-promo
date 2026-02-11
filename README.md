@@ -1055,6 +1055,8 @@ SELECT
 FROM `{project}.{dataset}.promotions`
 ```
 
+![Query 1 - Total de Produtos](./app/utils/img/query1.png)
+
 ### 2. Produtos por Fonte
 
 ```sql
@@ -1068,6 +1070,8 @@ FROM `{project}.{dataset}.promotions`
 GROUP BY source
 ORDER BY total DESC
 ```
+
+![Query 2 - Produtos por Fonte](./app/utils/img/query2.png)
 
 ### 3. Descontos Mais Altos
 
