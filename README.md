@@ -848,7 +848,7 @@ $ python scripts/bigquery_teste.py
 
 ---
 
-## 📝 Próximos Passos
+## 📝 Status da Implementação
 
 - [x] Web scraping com requests + BeautifulSoup
 - [x] Normalização completa (todos os campos do desafio)
@@ -857,9 +857,25 @@ $ python scripts/bigquery_teste.py
 - [x] Coleta multi-fonte com paginação
 - [x] Dockerfile e docker-compose
 - [x] API FastAPI com endpoints `/health` e `/collect`
-- [x] Deploy no Cloud Run (GCP)
+- [⚠️] Deploy no Cloud Run (GCP) - **Requer ativação de conta de faturamento no GCP**
 - [x] Logs estruturados (JSON)
+- [x] GitHub Actions CI/CD workflow
 - [ ] Autenticação/Rate limiting na API
+
+### ⚠️ Nota sobre Cloud Run
+
+O deploy no Cloud Run foi **implementado e testado**, mas não foi concluído devido a:
+
+- ❌ **Conta de faturamento não ativada no GCP** - Necessário para usar Cloud Run
+- ✅ **Workflow GitHub Actions criado** - Pronto para disparar ao fazer release
+- ✅ **Dockerfile otimizado** - Multi-stage build configurado
+- ✅ **Logs estruturados** - JSON pronto para Cloud Logging
+- ✅ **GitHub Secrets configurados** - GCP_PROJECT_ID, GCP_DATASET_ID, GCP_SA_KEY
+
+**Para completar o deploy:**
+1. Ativar conta de faturamento no GCP (recebe $300 de crédito gratuito)
+2. Fazer release no GitHub: `git tag -a v1.3.0 && git push origin v1.3.0`
+3. Workflow disparará automaticamente e fará deploy no Cloud Run
 
 ---
 
@@ -877,6 +893,7 @@ $ python scripts/bigquery_teste.py
 | google-cloud-bigquery | Persistência no BigQuery |
 | python-json-logger | Logs estruturados em JSON |
 | Docker | Containerização |
+| GitHub Actions | CI/CD e automação de deploy |
 
 ---
 
