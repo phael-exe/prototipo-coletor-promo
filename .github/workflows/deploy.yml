@@ -3,6 +3,7 @@ name: Deploy to Cloud Run
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 env:
   GCP_REGION: us-central1
