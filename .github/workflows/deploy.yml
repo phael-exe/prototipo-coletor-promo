@@ -1,0 +1,72 @@
+name: Deploy to Cloud Run
+
+on:
+  release:
+    types: [published]
+
+env:
+  GCP_REGION: us-central1
+  IMAGE_NAME: coletor-promo
+  GAR_REPOSITORY: docker-repo
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build Image
+        env:
+          REGISTRY: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/docker-repo
+          IMAGE: coletor-promo
+          TAG: ${{ github.ref_name }}
+        run: |
+          docker build -t $REGISTRY/$IMAGE:$TAG -t $REGISTRY/$IMAGE:latest .
+
+      - name: Push Image
+        env:
+          REGISTRY: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/docker-repo
+          IMAGE: coletor-promo
+          TAG: ${{ github.ref_name }}
+        run: |
+          docker push $REGISTRY/$IMAGE:$TAG
+          docker push $REGISTRY/$IMAGE:latest
+
+      - name: Deploy to Cloud Run
+        env:
+          REGISTRY: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/docker-repo
+          IMAGE: coletor-promo
+          TAG: ${{ github.ref_name }}
+        run: |
+          gcloud run deploy coletor-promo \
+            --image $REGISTRY/$IMAGE:$TAG \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATASET_ID=${{ secrets.GCP_DATASET_ID }},LOG_LEVEL=INFO,ENABLE_CLOUD_LOGGING=true" \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-instances 10
+
+      - name: Test Service
+        run: |
+          sleep 15
+          gcloud run services describe coletor-promo --platform managed --region us-central1
